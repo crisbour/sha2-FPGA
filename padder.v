@@ -25,7 +25,7 @@ module padder
     // AXI Stream Data Width
     parameter P_M_AXIS_DATA_WIDTH=512,
     parameter P_S_AXIS_DATA_WIDTH=512,
-    parameter DATA_BLOCK_REG_WIDTH=512,
+    parameter DATA_BLOCK_REG_WIDTH=512
 )
 (
     // Global Ports
@@ -34,7 +34,7 @@ module padder
 
     // Control
     input sha_type,  // 0 if SHA256 and 1 if SHA512 or SHA384
-    input en,   // 1 if the hashing engine has been enabled by the shceduler
+    input en,   // 1 if the hashing engine has been enabled by the scheduler
 
     // Master Stream Port
     output [(P_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
@@ -70,22 +70,27 @@ module padder
     // otherwise use both of them
     reg [DATA_BLOCK_REG_WIDTH-1:0] R_reg;
     reg [DATA_BLOCK_REG_WIDTH-1:0] L_reg;
+    reg [DATA_BLOCK_REG_WIDTH-1:0] pad;
     reg [1:0] reg_status;
+    reg [NUM_BYTES_WIDTH-1:0] shift_inc;
+    reg [NUM_BYTES_WIDTH-1:0] shift_measure;
     reg [NUM_BYTES_WIDTH-1:0] last_valid_byte;
     reg [NUM_BYTES_WIDTH-1:0] next_byte;
     reg [31:0] length_low;
     reg [31:0] length_high;
     reg reg_count;
+    wire reset;
 
     // ----------- Logic -----------
     // Transmitting padded message block
     assign m_axis_tvalid = sha_type ? reg_status[1] : reg_status[0];
     assign m_axis_tdata = sha_type ? L_reg : R_reg;
+    assign reset = ~ resetn;
 
     // FSM dependent wires
     // free_reg, empty_reg and complete and indicators for what will be the state at the next clock cycle
     assign free_reg = m_axis_tvalid & m_axis_tready | ~reg_status[0] | (sha_type & ~reg_status[1]);
-    assign empty_reg = m_axis_tvalid & m_axis_tready & (sha_type ? reg_status == 2b'10 : reg_status[0]);
+    assign empty_reg = m_axis_tvalid & m_axis_tready & (sha_type ? reg_status == 2'b10 : reg_status[0]);
     assign last_received = s_axis_tlast & s_axis_tready & s_axis_tvalid;
     assign complete = free_reg & (reg_count | ~sha_type) & (next_byte < 56 - 8*sha_type);
 
@@ -100,11 +105,11 @@ module padder
     localparam PAD = 2;
     localparam EXTRA_PAD = 3;
     localparam WAIT = 4;
-    lolcalparam RESET = 5;
+    localparam RESET = 5;
 
     initial begin
         s_axis_tready = 0;
-        reg_status = 2b'00;
+        reg_status = 2'b00;
         length_low = 0;
         length_high = 0;
         reg_count = 0;
@@ -114,7 +119,7 @@ module padder
     // RX FSM transitions
     always @(*) begin
         receive_state_next = receive_state;
-        case(receive_state):
+        case(receive_state)
             IDLE: begin
                 s_axis_tready_next = 0;
                 if(free_reg) begin
@@ -150,7 +155,7 @@ module padder
             end
             WAIT: begin
                 s_axis_tready_next = 0;
-                if(emtpy_reg) begin
+                if(empty_reg) begin
                     receive_state_next = RESET;
                 end
             end
@@ -198,8 +203,8 @@ module padder
     // Feed R_reg
     always @(posedge axi_aclk) begin
         if(reset) begin
-            R_reg <= #1 512b'0;
-            L_reg <= #1 512b'0;
+            R_reg <= #1 0;
+            L_reg <= #1 0;
         end
         else begin
             case(receive_state)
@@ -225,7 +230,7 @@ module padder
                             // Write tdata to R_reg
                             R_reg <= s_axis_tdata;
                             next_byte = last_valid_byte + 1;
-                            count_message(last_valid_byte + 1);
+                            count_message(next_byte);
                             if(next_byte == 0) begin    // If there weren't any null bytes in the last frame
                                 reg_status[0] <= 1;
                             end else begin
@@ -235,7 +240,7 @@ module padder
                         else begin  // Write tdata to R_reg and raise the flag for a new register
                             R_reg <= s_axis_tdata;
                             reg_status[0] <= 1;
-                            count_message(8)
+                            count_message(8);
                         end
                     end
                     else begin  // No message block has been received
@@ -245,20 +250,23 @@ module padder
 
                 PAD: begin
                     if(free_reg)begin   // If R_reg is not completed or if it will be propagated at the next clock edge, then we can carry on with padding
-                        R_reg[8 * (next_byte + 1) - 1 : 8 * next_byte] <= 8h'80;
+                        pad = 8'h80 << (8 * next_byte);
                         count_message(8);
                         next_byte = next_byte + 1;
                         if(next_byte > 56 - 8 * sha_type) begin // If the length doesn't fit in the padding, just pad with 0s the rest and go to next block
-                            R_reg[DATA_BLOCK_REG_WIDTH-1:8 * (next_byte + 1)] <= 0;
                             count_message(DATA_BLOCK_REG_WIDTH - 8 * next_byte);
-                            reg_status[0] <= 1;
                         end else begin // If the length fits, then pad with 0s all, but the length bytes
                             count_message(DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * (1 + sha_type) - 8 * next_byte);
                             // Length is written in big-endian format
-                            R_reg[DATA_BLOCK_REG_WIDTH-1 : DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * (1+sha_type)] <= {2*sha_type{8'h00}, length_high, length_low};
-                            R_reg[DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * (1+sha_type) - 1 : 8 * next_byte] <= 0;
-                            reg_status[0] <= 1;
+                            if(sha_type) begin
+                                pad = pad | {{16'h00},length_high,length_low} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * 2);
+                            end else begin
+                                pad = pad | {length_high,length_low} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
+                            end
+                            
                         end
+                        R_reg = R_reg & (1<<(next_byte+1) - 1) | pad;
+                        reg_status[0] <= 1;
                         next_byte = 0;
                     end
                 end
@@ -272,8 +280,11 @@ module padder
                             count_message(DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * (1 + sha_type));
                             // Length is written in big-endian format
                             // I assumed the length will never surprass 2^64-1, which is a reasonable assumption
-                            R_reg[DATA_BLOCK_REG_WIDTH-1 : DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * (1+sha_type)] <= {2*sha_type{8'h00}, length_high, length_low};
-                            R_reg[DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * (1+sha_type) - 1 : 0] <= 0;
+                            if(sha_type) begin
+                                R_reg <= {{16'h00},length_high,length_low} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * 2);
+                            end else begin
+                                R_reg <= {length_high,length_low} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
+                            end
                             reg_status[0] <= 1;
                         end
                     end
@@ -284,7 +295,7 @@ module padder
                     end
                 end
                 RESET: begin
-                    reg_status = 2b'00;
+                    reg_status = 2'b00;
                     length_low = 0;
                     length_high = 0;
                     reg_count = 0;
@@ -294,3 +305,4 @@ module padder
     end
 
 endmodule
+
