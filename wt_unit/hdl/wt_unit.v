@@ -306,4 +306,14 @@ always @(posedge axi_aclk) begin
     end
 end
 
+`ifdef COCOTB_SIM
+`ifndef VERILATOR // traced differently
+initial begin
+  $dumpfile ("waveform.vcd");
+  $dumpvars (0, wt_unit);
+  #1;
+end
+`endif
+`endif
+
 endmodule

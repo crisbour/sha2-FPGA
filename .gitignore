@@ -8,7 +8,7 @@
 
 **/waveform.vcd
 
-**/test_*
+**/*test*.py
 
 padder/model/
 
