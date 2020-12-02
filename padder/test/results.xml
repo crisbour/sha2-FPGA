@@ -1,7 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1606894902" />
-    <testcase name="run_test_001" classname="test_padder_cocotb" time="0.22270727157592773" sim_time_ns="320.001" ratio_time="1436.8682160021067" />
-    <testcase name="run_test_002" classname="test_padder_cocotb" time="0.16317987442016602" sim_time_ns="430.001" ratio_time="2635.135009926566" />
-  </testsuite>
-</testsuites>
