@@ -4,6 +4,7 @@ import warnings
 import random
 import logging
 import struct
+import sys
 
 import cocotb
 
@@ -26,7 +27,6 @@ with warnings.catch_warnings():
 
 DATA_BIT_WIDTH = 512
 DATA_BYTE_WIDTH = int(DATA_BIT_WIDTH/8)
-PAD_BYTES = 9
 
 class WtUnitTB(object):
 
@@ -60,39 +60,30 @@ class WtUnitTB(object):
 		self.dut.axi_resetn <= 1
 		self.dut._log.debug("Out of reset")
 
+	def _rotr(self, word, rsh):
+		return ((word >> rsh) | (x<<(32-rsh))) & 0xFFFFFFFFL
+
 	def model(self, transaction):
 		message = transaction['data']
 		print(message)
-		buffer = b''
-		start = 0
-		length = 0
-		parity = True	# Used for SHA384/512
-		eom = False
-		while start<len(message):
-			parity = not parity
-			end = start + DATA_BYTE_WIDTH
-			if end > len(message) :
-				end = len(message)
-				eom = True
-			length += (end - start)
-			buffer += message[start:end]
-			if eom:
-				padlen = DATA_BYTE_WIDTH - PAD_BYTES - (end-start)
-				if(end-start > DATA_BYTE_WIDTH - PAD_BYTES):
-					padlen += DATA_BYTE_WIDTH
-				length_mess = struct.pack('!Q', length << 3) #length.to_bytes(8, 'big')
-				buffer += b'\x80' + (b'\x00'*padlen) + length_mess
-			start += DATA_BYTE_WIDTH
-		print('Length={}'.format(length))
-		self.expected_output.append({'data': buffer})
-		while buffer:
-			self.dut._log.debug("Message block received: {}".format(buffer[0:DATA_BYTE_WIDTH]))
-			buffer = buffer[DATA_BYTE_WIDTH:]
+		while message:
+			for i in range(16):
+				w.append(4*b'\00'+message[4*i:4*(i+1)])
+				self.expected_output.append({'data': w[-1]]})
+			for i in range(16,64):
+				w1 = int.from_bytes(w[1],'big')
+				w14 = int.from_bytes(w[14],'big')
+				sigma0 = self._rotr(int(w1), 7) ^ self._rotr(w1, 18) ^ (w1 >> 3)
+            	sigma1 = self._rotr(w14, 17) ^ self._rotr(w14, 19) ^ (w14 >> 10)
+				w0 = int.from_bytes(w.popleft(),'big')
+				w.append(struct.pack('!Q',(w0 + sigma0 + w[9] + sigma1) & 0xFFFFFFFFL))
+				self.expected_output.append({'data': w[-1]]})
+			message = message[DATA_BYTE_WIDTH:]
 
-def random_message(min_size=1, max_size=400, npackets=4):
+def random_message(min_blocks=1, max_blocks=5, npackets=4):
 	"""random string data of a random length"""
 	for i in range(npackets):
-		yield get_bytes(random.randint(min_size, max_size), random_data())
+		yield get_bytes(DATA_BYTE_WIDTH*random.randint(min_size, max_size), random_data())
 
 
 async def run_test(dut, data_in=None, backpressure_inserter=None):
