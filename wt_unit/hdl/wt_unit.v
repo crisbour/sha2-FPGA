@@ -68,6 +68,7 @@ wire reset;
 wire load_reg;
 wire hcu_read;
 reg finish;
+reg wait_eof;
 reg [1:0] sha_type_reg;
 reg [6:0] loopbacks;
 reg step_count;
@@ -95,6 +96,7 @@ begin
     m_axis_tvalid = 0;
     s_axis_tready = 0;
 
+    wait_eof = 0;
     finish = 0;
     loopbacks = 0;
     step_count = 0;
@@ -162,6 +164,7 @@ localparam BLOCK1024_R = 2;
 localparam BLOCK1024_L = 3;
 localparam TRANSF512 = 4;
 localparam TRANSF1024 = 5;
+localparam WAIT = 6;
 
 // FSM transitions
 always @(*) begin 
@@ -178,16 +181,16 @@ always @(*) begin
             end
         end
         BLOCK512: begin
-            if (s_axis_tvalid) begin
-               s_axis_tready_next = 0; 
-               m_axis_tvalid_next = 1;
-               state_next = TRANSF512;
+            if(s_axis_tvalid) begin
+                s_axis_tready_next = 0; 
+                m_axis_tvalid_next = 1;
+                state_next = TRANSF512;
             end
         end
         TRANSF512: begin
             if(loopbacks == `BLOCK512_STEPS-1 & hcu_read) begin
                 m_axis_tvalid_next = 0;
-                if(finish)  state_next = IDLE;
+                if(finish) state_next = IDLE;
                 else begin
                     s_axis_tready_next = 1;
                     state_next = BLOCK512;
@@ -214,6 +217,13 @@ always @(*) begin
                     s_axis_tready_next = 1;
                     state_next = BLOCK1024_R;
                 end
+            end
+        end
+        WAIT: begin
+            if(~wait_eof | hcu_read) begin
+                m_axis_tvalid_next = 0;
+                s_axis_tready_next = 0;
+                state_next = IDLE;
             end
         end
     endcase
@@ -257,8 +267,11 @@ always @(posedge axi_aclk) begin
             end
 
             TRANSF512: begin
-                if(hcu_read) begin
-                    if(finish & loopbacks == `BLOCK512_STEPS-2) m_axis_tlast <= 1; //Next available tdata is the last chunck "Wt" for this Message
+                if(hcu_read & loopbacks == `BLOCK512_STEPS-1)
+                    loopbacks <= 0;
+                if(hcu_read && loopbacks<`BLOCK512_STEPS-1) begin
+                    if(loopbacks == `BLOCK512_STEPS-2 & finish) 
+                         m_axis_tlast <= 1; //Next available tdata is the last chunck "Wt" for this Message
                     loopbacks <= loopbacks + 1; // Count number of iterations
 
                     for(i=0;i<15;i=i+1) begin
