@@ -1,10 +1,9 @@
 #!/bin/python
 
-import warnings
 import random
 import logging
+import warnings
 import struct
-import sys
 
 import cocotb
 
@@ -14,8 +13,7 @@ from cocotb.drivers import BitDriver
 from cocotb.result import ReturnValue
 from cocotb.regression import TestFactory
 from cocotb.scoreboard import Scoreboard
-from cocotbext.axis import *
-from axis import AXIS_Writer, AXIS_Reader
+from cocotbext.axis import AXIS_Driver, AXIS_Monitor
 
 from collections import deque
 
@@ -35,7 +33,7 @@ class WtUnitTB(object):
 		dut.sha_type <= 0	# Set it to SHA224/256
 		self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk)
 		self.backpressure = BitDriver(dut.m_axis_tready, dut.axi_aclk)
-		self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axi_aclk)
+		self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axi_aclk, lsb_first=False)
 
 		self.expected_output = []
 
@@ -64,23 +62,21 @@ class WtUnitTB(object):
 		return ((word >> rsh) | (word<<(32-rsh))) & 0xFFFFFFFF
 
 	def model(self, transaction):
-		print(type(transaction))
+		print('Transaction={}'.format(transaction))
 		message = transaction['data']
 		w = deque()
 		buffer = b''
-		print(message)
 		while len(message):
 			for i in range(16):
-				w.append(4*b'\00'+message[4*i:4*(i+1)])
-				buffer += w[-1]
+				w_temp, = struct.unpack('!Q',4*b'\x00'+message[4*i:4*(i+1)])
+				w.append(w_temp)
+				buffer += struct.pack('!Q',w_temp)
 			for i in range(16,64):
-				w1 = int.from_bytes(w[1],'big')
-				w14 = int.from_bytes(w[14],'big')
-				sigma0 = self._rotr(w1, 7) ^ self._rotr(w1, 18) ^ (w1 >> 3)
-				sigma1 = self._rotr(w14, 17) ^ self._rotr(w14, 19) ^ (w14 >> 10)
-				w0 = int.from_bytes(w.popleft(),'big')
-				w.append(struct.pack('!Q',(w0 + sigma0 + int.from_bytes(w[9],'big') + sigma1) & 0xFFFFFFFF))
-				buffer += w[-1]
+				sigma0 = self._rotr(w[1], 7) ^ self._rotr(w[1], 18) ^ (w[1] >> 3)
+				sigma1 = self._rotr(w[14], 17) ^ self._rotr(w[14], 19) ^ (w[14] >> 10)
+				w.append((w[0] + sigma0 + w[9] + sigma1) & 0xFFFFFFFF)
+				w.popleft()
+				buffer += struct.pack('!Q',w[-1])
 			message = message[DATA_BYTE_WIDTH:]
 		self.expected_output.append({'data': buffer})
 
@@ -100,7 +96,10 @@ async def run_test(dut, data_in=None, backpressure_inserter=None):
 	cocotb.fork(clock.start())  # Start the clock
 	tb = WtUnitTB(dut, True)
 
+	print('Starting simulation!')
+
 	await tb.reset()
+
 	dut.m_axis_tready <= 1
 	
 	if backpressure_inserter is not None:
@@ -125,5 +124,5 @@ async def run_test(dut, data_in=None, backpressure_inserter=None):
 factory = TestFactory(run_test)
 factory.add_option("data_in", [random_message])
 factory.add_option("backpressure_inserter", 
-					[None, random_50_percent])
+					[None, random_50_percent]) # Throtle tready: random_50_percent
 factory.generate_tests()

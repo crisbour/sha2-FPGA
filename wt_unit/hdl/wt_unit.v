@@ -74,9 +74,7 @@ reg step_count;
 
 // Initial assignments
 initial begin
-    m_axis_tvalid = 0;
-    s_axis_tready = 0;
-    state = IDLE;
+    reset_task();
 end
 
 
@@ -87,6 +85,25 @@ assign reset = ~axi_resetn;
 // Auxiliary variables
 integer i;
 integer b;
+
+// ---------- Reset State: Task -------
+task reset_task();
+begin
+    state = IDLE;
+
+    m_axis_tlast = 0;
+    m_axis_tvalid = 0;
+    s_axis_tready = 0;
+
+    finish = 0;
+    loopbacks = 0;
+    step_count = 0;
+
+    for(i=0;i<16;i=i+1) begin // Clear the registers
+                    Reg[i] = 0;
+    end
+end
+endtask
 
 // ---------- Function Sigma ----------
 function [REG_WT_LR_LENGTH-1 : 0] sigma;
@@ -153,6 +170,7 @@ always @(*) begin
     m_axis_tvalid_next = m_axis_tvalid;
     case(state)
         IDLE: begin
+            m_axis_tvalid_next = 0;
             if(en) begin
                 s_axis_tready_next = 1;
                 if(sha_type[1]) state_next = BLOCK1024_R;
@@ -205,9 +223,8 @@ end
 always @(posedge axi_aclk)
 begin: FSM_SEQ
     if(reset) begin
-        state <=IDLE;
-    end
-    else begin
+        reset_task();
+    end else begin
         state <= state_next;
         s_axis_tready <= s_axis_tready_next;
         m_axis_tvalid <= m_axis_tvalid_next;
@@ -216,23 +233,13 @@ end
 
 always @(posedge axi_aclk) begin
     if(reset) begin
-        m_axis_tlast <= 0;
-        sha_type_reg <= 0;
-        for(i=0;i<16;i=i+1) begin // Clear the registers
-            Reg[i] <= 0;
-        end
-    end
+        reset_task();
+    end 
     else begin
         case(state)
             IDLE: begin
-                finish <= 0;
-                m_axis_tlast <= 0;
-                m_axis_tvalid <= 0;
-                loopbacks <= 0;
+                reset_task();
                 if(en)  sha_type_reg <= sha_type;
-                for(i=0;i<16;i=i+1) begin // Clear the registers
-                    Reg[i] <= 0;
-                end
             end
 
             BLOCK512: begin
@@ -259,9 +266,10 @@ always @(posedge axi_aclk) begin
                     end
                     // This modulo addition should be replaced with two CSAs and one CPA with widths matched
                     Reg[15][REG_WT_LR_LENGTH-1:0] <= 32'hFFFFFFFF &
-                            (sigma(Reg[1][REG_WT_LR_LENGTH-1:0],sha_type_reg,0));
-                            // + Reg[7][REG_WT_R_LENGTH-1:0]
-                            // + sigma(Reg[14][REG_WT_R_LENGTH-1:0],sha_type_reg,1));  
+                            (  Reg[0][REG_WT_R_LENGTH-1:0]
+                             + sigma(Reg[1][REG_WT_R_LENGTH-1:0],sha_type_reg,0)
+                             + Reg[9][REG_WT_R_LENGTH-1:0]
+                             + sigma(Reg[14][REG_WT_R_LENGTH-1:0],sha_type_reg,1));  
                 end
             end
 
