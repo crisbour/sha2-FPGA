@@ -147,6 +147,70 @@ localparam PAD = 2;
 localparam EXTRA_PAD = 3;
 localparam WAIT = 4;
 
+// FSM transitions
+always @(*) begin
+    state_next = state;
+    s_axis_tready_next = s_axis_tready;
+    m_axis_tlast_next = m_axis_tlast;
+    case(state)
+        IDLE: begin
+            s_axis_tready_next = 0;
+            if(free_reg) begin
+                state_next = FEED;
+                s_axis_tready_next = 1;
+            end
+        end
+        FEED: begin
+            s_axis_tready_next = 1;
+            if(last_received) begin
+                s_axis_tready_next = 0;
+                state_next = PAD;
+            end
+        end
+        PAD: begin
+            s_axis_tready_next = 0;
+            if(free_reg) begin
+                if(complete) begin 
+                    state_next = WAIT;
+                    m_axis_tlast_next = 1;
+                end else begin
+                    state_next = EXTRA_PAD;
+                end
+            end
+        end
+        EXTRA_PAD: begin
+            s_axis_tready_next = 0;
+            if(complete) begin
+                m_axis_tlast_next = 1;
+                state_next = WAIT;
+            end
+        end
+        WAIT: begin
+            s_axis_tready_next = 0;
+            if(empty_reg) begin
+                state_next = IDLE;
+                m_axis_tlast_next = 0;
+            end
+        end
+    endcase
+end
+
+//----------Seq Logic----------------------
+always @(posedge axi_aclk)
+begin: FSM_SEQ
+    if(reset) begin
+        state <=IDLE;
+        m_axis_tlast <= 0;
+        s_axis_tready_fsm <= 0;
+
+    end
+    else begin
+        state <= state_next;
+        s_axis_tready_fsm <= s_axis_tready_next;
+        m_axis_tlast <= m_axis_tlast_next;
+    end
+end
+
 /*
 ******** Feed Data In Logic *******
 */
@@ -271,70 +335,6 @@ always @(posedge axi_aclk) begin
     end
 end
 
-
-// FSM transitions
-always @(*) begin
-    state_next = state;
-    s_axis_tready_next = s_axis_tready;
-    m_axis_tlast_next = m_axis_tlast;
-    case(state)
-        IDLE: begin
-            s_axis_tready_next = 0;
-            if(free_reg) begin
-                state_next = FEED;
-                s_axis_tready_next = 1;
-            end
-        end
-        FEED: begin
-            s_axis_tready_next = 1;
-            if(last_received) begin
-                s_axis_tready_next = 0;
-                state_next = PAD;
-            end
-        end
-        PAD: begin
-            s_axis_tready_next = 0;
-            if(free_reg) begin
-                if(complete) begin 
-                    state_next = WAIT;
-                    m_axis_tlast_next = 1;
-                end else begin
-                    state_next = EXTRA_PAD;
-                end
-            end
-        end
-        EXTRA_PAD: begin
-            s_axis_tready_next = 0;
-            if(complete) begin
-                m_axis_tlast_next = 1;
-                state_next = WAIT;
-            end
-        end
-        WAIT: begin
-            s_axis_tready_next = 0;
-            if(empty_reg) begin
-                state_next = IDLE;
-                m_axis_tlast_next = 0;
-            end
-        end
-    endcase
-end
-
-//----------Seq Logic----------------------
-always @(posedge axi_aclk)
-begin: FSM_SEQ
-    if(reset) begin
-        state <=IDLE;
-        m_axis_tlast <= 0;
-        s_axis_tready_fsm <= 0;
-
-    end
-    else begin
-        state <= state_next;
-        s_axis_tready_fsm <= s_axis_tready_next;
-        m_axis_tlast <= m_axis_tlast_next;
-    end
-end
 
 `ifdef COCOTB_SIM
 `ifndef VERILATOR // traced differently

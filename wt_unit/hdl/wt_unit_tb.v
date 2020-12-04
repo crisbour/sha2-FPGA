@@ -129,7 +129,7 @@ wt_unit wt_ut(
 
     // Control
     .sha_type		(2'b00),  // 0 if SHA256 and 1 if SHA512 or SHA384
-    .en 			(1),   // 1 if the hashing engine has been enabled by the scheduler
+    .en 			(1'b1),   // 1 if the hashing engine has been enabled by the scheduler
 
     // Master Stream Port
     .m_axis_tdata	(t_tdata),
