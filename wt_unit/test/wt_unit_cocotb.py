@@ -77,10 +77,11 @@ class WtUnitTB(object):
 				w.append((w[0] + sigma0 + w[9] + sigma1) & 0xFFFFFFFF)
 				w.popleft()
 				buffer += struct.pack('!Q',w[-1])
+			w = deque()
 			message = message[DATA_BYTE_WIDTH:]
 		self.expected_output.append({'data': buffer})
 
-def random_message(min_blocks=1, max_blocks=1, npackets=1):
+def random_message(min_blocks=1, max_blocks=4, npackets=4):
 	"""random string data of a random length"""
 	for _ in range(npackets):
 		yield get_bytes(DATA_BYTE_WIDTH*random.randint(min_blocks, max_blocks), random_data())
@@ -95,8 +96,6 @@ async def run_test(dut, data_in=None, backpressure_inserter=None):
 	clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
 	cocotb.fork(clock.start())  # Start the clock
 	tb = WtUnitTB(dut, True)
-
-	print('Starting simulation!')
 
 	await tb.reset()
 
