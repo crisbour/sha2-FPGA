@@ -1,20 +1,20 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
+// Company: University of Oxford
+// Engineer: Cristian Bourceanu
 // 
 // Create Date: 20.11.2020 09:34:34
-// Design Name: 
+// Design Name: W(t) chunks generator
 // Module Name: wt_unit
-// Project Name: 
-// Target Devices: 
-// Tool Versions: 
+// Project Name: SHA2_FPGA
+// Target Devices: Alveo U280
+// Tool Versions: icarus 11.2
 // Description: 
 // 
-// Dependencies: 
+// Dependencies: padder.v
 // 
 // Revision:
-// Revision 0.01 - File Created
+// Revision 0.2.1 - Fixing Sigma Function
 // Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
@@ -59,6 +59,8 @@ localparam WT_LENGTH = 16;
 
 // Registers and wries for W(t)
 reg [REG_WT_LR_LENGTH-1 : 0] Reg [WT_LENGTH-1 : 0];
+wire [REG_WT_LR_LENGTH-1 : 0] W0_Reg; //Register to inspect value of Reg[0] in simulation
+assign W0_Reg = Reg[0];
 assign m_axis_tdata = Reg[0];
 
 // Wires and registers for assessing states
@@ -69,6 +71,13 @@ reg finish;
 reg [1:0] sha_type_reg;
 reg [6:0] loopbacks;
 reg step_count;
+
+// Initial assignments
+initial begin
+    m_axis_tvalid = 0;
+    s_axis_tready = 0;
+    state = IDLE;
+end
 
 
 assign hcu_read = m_axis_tready & m_axis_tvalid & (~sha_type_reg[1] | step_count);
@@ -114,13 +123,13 @@ function [REG_WT_LR_LENGTH-1 : 0] sigma;
                     s1 = `SHA512_S0_1; s2 = `SHA512_S0_2; s3 = `SHA512_S0_3;
                 end
         endcase // sha_type
-        assign op1 = tempReg >> s1;
+        op1 = tempReg >> s1;
         if(sha_type[1]) begin
-            assign op2 = tempReg >> s2 | tempReg << (REG_WT_R_LENGTH-s2);
-            assign op3 = tempReg >> s3 | tempReg << (REG_WT_R_LENGTH-s3);
+            op2 = tempReg >> s2 | tempReg << (REG_WT_LR_LENGTH-s2);
+            op3 = tempReg >> s3 | tempReg << (REG_WT_LR_LENGTH-s3);
         end else begin
-            assign op2 = tempReg >> s2 | tempReg << (REG_WT_LR_LENGTH-s2);
-            assign op3 = tempReg >> s3 | tempReg << (REG_WT_LR_LENGTH-s3);
+            op2 = tempReg >> s2 | tempReg << (REG_WT_R_LENGTH-s2);
+            op3 = tempReg >> s3 | tempReg << (REG_WT_R_LENGTH-s3);
         end        
         sigma = op1 ^ op2 ^ op3;
     end
@@ -146,8 +155,8 @@ always @(*) begin
         IDLE: begin
             if(en) begin
                 s_axis_tready_next = 1;
-                if(sha_type[1]) state_next = BLOCK512;
-                else state_next = BLOCK1024_R;
+                if(sha_type[1]) state_next = BLOCK1024_R;
+                else state_next = BLOCK512;
             end
         end
         BLOCK512: begin
@@ -216,7 +225,10 @@ always @(posedge axi_aclk) begin
     else begin
         case(state)
             IDLE: begin
+                finish <= 0;
                 m_axis_tlast <= 0;
+                m_axis_tvalid <= 0;
+                loopbacks <= 0;
                 if(en)  sha_type_reg <= sha_type;
                 for(i=0;i<16;i=i+1) begin // Clear the registers
                     Reg[i] <= 0;
@@ -246,10 +258,10 @@ always @(posedge axi_aclk) begin
                         Reg[i] <= Reg[i+1];
                     end
                     // This modulo addition should be replaced with two CSAs and one CPA with widths matched
-                    Reg[15][REG_WT_R_LENGTH-1:0] <= 32'hFFFFFFFF &
-                            |(sigma(Reg[1][REG_WT_R_LENGTH-1:0],sha_type_reg,0)
-                            |+ Reg[7][REG_WT_R_LENGTH-1:0]
-                            |+ sigma(Reg[14][REG_WT_R_LENGTH-1:0],sha_type_reg,1));  
+                    Reg[15][REG_WT_LR_LENGTH-1:0] <= 32'hFFFFFFFF &
+                            (sigma(Reg[1][REG_WT_LR_LENGTH-1:0],sha_type_reg,0));
+                            // + Reg[7][REG_WT_R_LENGTH-1:0]
+                            // + sigma(Reg[14][REG_WT_R_LENGTH-1:0],sha_type_reg,1));  
                 end
             end
 
@@ -315,5 +327,11 @@ initial begin
 end
 `endif
 `endif
+
+initial begin
+  $dumpfile ("waveform.vcd");
+  $dumpvars (0, wt_unit);
+  #1;
+end
 
 endmodule

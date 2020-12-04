@@ -17,7 +17,7 @@ from cocotb.scoreboard import Scoreboard
 from cocotbext.axis import *
 from axis import AXIS_Writer, AXIS_Reader
 
-from generate_message import *
+from collections import deque
 
 # Data generators
 with warnings.catch_warnings():
@@ -61,34 +61,39 @@ class WtUnitTB(object):
 		self.dut._log.debug("Out of reset")
 
 	def _rotr(self, word, rsh):
-		return ((word >> rsh) | (x<<(32-rsh))) & 0xFFFFFFFFL
+		return ((word >> rsh) | (word<<(32-rsh))) & 0xFFFFFFFF
 
 	def model(self, transaction):
+		print(type(transaction))
 		message = transaction['data']
+		w = deque()
+		buffer = b''
 		print(message)
-		while message:
+		while len(message):
 			for i in range(16):
 				w.append(4*b'\00'+message[4*i:4*(i+1)])
-				self.expected_output.append({'data': w[-1]]})
+				buffer += w[-1]
 			for i in range(16,64):
 				w1 = int.from_bytes(w[1],'big')
 				w14 = int.from_bytes(w[14],'big')
-				sigma0 = self._rotr(int(w1), 7) ^ self._rotr(w1, 18) ^ (w1 >> 3)
-            	sigma1 = self._rotr(w14, 17) ^ self._rotr(w14, 19) ^ (w14 >> 10)
+				sigma0 = self._rotr(w1, 7) ^ self._rotr(w1, 18) ^ (w1 >> 3)
+				sigma1 = self._rotr(w14, 17) ^ self._rotr(w14, 19) ^ (w14 >> 10)
 				w0 = int.from_bytes(w.popleft(),'big')
-				w.append(struct.pack('!Q',(w0 + sigma0 + w[9] + sigma1) & 0xFFFFFFFFL))
-				self.expected_output.append({'data': w[-1]]})
+				w.append(struct.pack('!Q',(w0 + sigma0 + int.from_bytes(w[9],'big') + sigma1) & 0xFFFFFFFF))
+				buffer += w[-1]
 			message = message[DATA_BYTE_WIDTH:]
+		self.expected_output.append({'data': buffer})
 
-def random_message(min_blocks=1, max_blocks=5, npackets=4):
+def random_message(min_blocks=1, max_blocks=1, npackets=1):
 	"""random string data of a random length"""
-	for i in range(npackets):
-		yield get_bytes(DATA_BYTE_WIDTH*random.randint(min_size, max_size), random_data())
+	for _ in range(npackets):
+		yield get_bytes(DATA_BYTE_WIDTH*random.randint(min_blocks, max_blocks), random_data())
 
 
 async def run_test(dut, data_in=None, backpressure_inserter=None):
 	dut.m_axis_tready <= 0
-	dut.log.setLevel(logging.DEBUG)
+	dut.en <= 1
+	#dut._log.setLevel(logging.DEBUG)
 
 	""" Setup testbench and run a test. """
 	clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
@@ -106,9 +111,10 @@ async def run_test(dut, data_in=None, backpressure_inserter=None):
 		await tb.s_axis.send(transaction)
 
 	# Wait for last transmission
-	await RisingEdge(dut.axi_aclk)
-	while not ( dut.m_axis_tlast.value and dut.m_axis_tvalid.value ):
+	while not ( dut.m_axis_tlast.value and dut.m_axis_tvalid.value and dut.m_axis_tready.value):
 		await RisingEdge(dut.axi_aclk)
+	await RisingEdge(dut.axi_aclk)
+	
 	
 	dut._log.info("DUT testbench finished!")
 
