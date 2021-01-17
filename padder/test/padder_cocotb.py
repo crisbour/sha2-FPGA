@@ -14,7 +14,7 @@ from cocotb.result import ReturnValue
 from cocotb.regression import TestFactory
 from cocotb.scoreboard import Scoreboard
 from cocotbext.axis import *
-from axis import AXIS_Writer, AXIS_Reader
+
 
 from generate_message import *
 
