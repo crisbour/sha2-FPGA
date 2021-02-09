@@ -33,6 +33,6 @@ module madd_32_64
 
 );
 
-assign = mode64 ? a + b : {a[63:32] + b[63:32],32h'00000000};
+assign s = mode64 ? a + b : {a[63:32] + b[63:32], 32'h00000000};
 
 endmodule

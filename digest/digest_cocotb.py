@@ -63,11 +63,9 @@ class DigestTB(object):
 	def model(self, transaction):
 		message = transaction['data']
 		print(message)
-		buffer = b''
-		start = 0
-		length = 0
-		parity = True	# Used for SHA384/512
-		eom = False
+        if()
+            
+        self.expected_output.append({'data': buffer})
 		while start<len(message):
 			parity = not parity
 			end = start + DATA_BYTE_WIDTH
@@ -84,7 +82,7 @@ class DigestTB(object):
 				buffer += b'\x80' + (b'\x00'*padlen) + length_mess
 			start += DATA_BYTE_WIDTH
 		print('Length={}'.format(length))
-		self.expected_output.append({'data': buffer})
+		
 		while buffer:
 			self.dut._log.debug("Message block received: {}".format(buffer[0:DATA_BYTE_WIDTH]))
 			buffer = buffer[DATA_BYTE_WIDTH:]

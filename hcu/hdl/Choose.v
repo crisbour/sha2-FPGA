@@ -19,21 +19,19 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-parameter DATA_WIDTH = 64;
-parameter SMALL_DATA_WIDTH = 32;
+// parameter DATA_WIDTH = 64;
+// parameter SMALL_DATA_WIDTH = 32;
 
 module Choose
 (
     // Inputs
-    input [DATA_WIDTH-1 : 0] x_val,
-    input [DATA_WIDTH-1 : 0] y_val,
-    input [DATA_WIDTH-1 : 0] z_val,
+    input [63 : 0] x_val,
+    input [63 : 0] y_val,
+    input [63 : 0] z_val,
 
     // Output
-    output [DATA_WIDTH-1 : 0] ch_value
+    output [63 : 0] ch_value
 );
-
-wire [DATA_WIDTH-1 : 0] ch_value;
 
 assign ch_value = (x_val&y_val)^((~x_val)&z_val);
 

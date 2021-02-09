@@ -19,15 +19,13 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-parameter DATA_WIDTH = 64;
-parameter SMALL_DATA_WIDTH = 32;
 
 module Sigma
 #(
     // 
-    parameter p1 = 2,
-    parameter p2 = 13,
-    parameter p3 = 22
+    parameter p1=2,
+    parameter p2=13,
+    parameter p3=22
 )
 (
 
@@ -36,13 +34,14 @@ module Sigma
     input data_width_flag,    // 0 if 32-bit and 1 for 64-bit
 
     // Input
-    input [DATA_WIDTH-1 : 0] data_value,
+    input [63 : 0] data_value,
 
     // Output
-    output [DATA_WIDTH-1 : 0] sigma_value
+    output [63 : 0] sigma_value
 );
+localparam DATA_WIDTH = 64;
+localparam SMALL_DATA_WIDTH = 32;
 
-wire [DATA_WIDTH-1 : 0] sigma_value;
 reg [DATA_WIDTH-1 : 0] data1;
 reg [DATA_WIDTH-1 : 0] data2;
 reg [DATA_WIDTH-1 : 0] data3;
@@ -63,10 +62,12 @@ end: SigmaOp
 
 assign sigma_value = data1 ^ data2 ^ data3;
 
+`ifndef VERILATOR
 initial begin
   $dumpfile ("waveform.vcd");
   $dumpvars (0, Sigma);
   #1;
 end
+`endif
 
 endmodule

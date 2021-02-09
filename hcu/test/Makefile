@@ -16,10 +16,16 @@ COMPILE_ARGS+=+incdir+$(TOPDIR)/hdl/
 endif
 
 # DUT
-VERILOG_SOURCES = $(PWD)/../hdl/Sigma.v
+VERILOG_SOURCES = $(PWD)/../hdl/hcu.v
+VERILOG_SOURCES += $(PWD)/../hdl/hash_update.v
+VERILOG_SOURCES += $(PWD)/../hdl/hcu_define.v
+VERILOG_SOURCES += $(PWD)/../hdl/madd_32_64.v
+VERILOG_SOURCES += $(PWD)/../hdl/Majority.v
+VERILOG_SOURCES += $(PWD)/../hdl/Sigma.v
+
 TOPLEVEL = Sigma
 
 export TOPLEVEL_LANG
-MODULE = modules_cocotb
+MODULE = hcu_cocotb
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
