@@ -68,10 +68,10 @@ always @(posedge clk) begin
         for(i=0;i<8;i=i+1)begin
             if(~sha_type[1])begin
                 if(sha_type[0])
-                    H[i][63:32] <= HASH_INIT[i][63:32];
+                    H[i][31:0] <= HASH_INIT[i][63:32];
                 else
-                    H[i][63:32] <= HASH_INIT_224[i];
-                H[i][31:0] <= 32'b0;
+                    H[i][31:0] <= HASH_INIT_224[i];
+                H[i][63:32] <= 32'b0;
             end else begin
                 if(sha_type[0])
                     H[i] <= HASH_INIT[i];

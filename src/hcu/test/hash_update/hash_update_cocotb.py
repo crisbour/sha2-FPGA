@@ -34,11 +34,12 @@ class RegisterInMonitor(RegisterMonitor):
         if mode64:
             return (a + b) & 0xFFFFFFFFFFFFFFFF
         else:
-            return ((a & 0xFFFFFFFF00000000) + (b & 0xFFFFFFFF00000000)) & 0xFFFFFFFF00000000
+            return ((a & 0xFFFFFFFF) + (b & 0xFFFFFFFF)) & 0xFFFFFFFF
 
     def hash_init(self, sha_type):
         sha_type = sha_type.integer
-        shift = int(WIDTH_WORDS/2) if (~sha_type & 0x2) else 0
+        # shift = int(WIDTH_WORDS/2) if (~sha_type & 0x2) else 0
+        shift = 0
         H_out_next = [BinaryValue(h_init[sha_type][i] << (shift)) for i in range(N_WORDS)]
         H_out_next.reverse()
         return H_out_next

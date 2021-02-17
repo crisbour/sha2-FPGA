@@ -15,65 +15,52 @@ from cocotb.triggers import RisingEdge, ReadOnly
 from cocotb.generators.byte import random_data, get_bytes
 from cocotb.generators.bit import wave, intermittent_single_cycles, random_50_percent
 
-from hash_init import h_init, sha_iterations
+from hash_update.hash_init import h_init, sha_iterations
 
 N_WORDS = 8
 WIDTH_WORDS = 64
 
-class RegisterMonitor(BusMonitor):
-    ''' Base class for monitoring inputs/outputs of hash_update. '''
-    def __init__(self, dut, callback=None, event=None):
-        super().__init__(dut, "", dut.clk, callback=callback, event=event)
+class HCUTb(object):
+    def __init__(self, dut, sha_type, debug=False):
+        self.dut = dut
+        self.sha_type <= sha_type
+        self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk)
+        self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axi_aclk, lsb_first=False)
 
-class RegisterInMonitor(RegisterMonitor):
-    ''' Monitor inputs of hash_update module. '''
-    _signals = {'H_in': 'AH', 'H_out': 'H', 'update': 'update', 'sha': 'sha_type', 'reset': 'reset'}
+        self.H = h_init[sha_type]
+        self.word_count = 0
 
-    def sum(self, a, b, mode64):
-        if mode64:
-            return (a + b) & 0xFFFFFFFFFFFFFFFF
-        else:
-            return ((a & 0xFFFFFFFF00000000) + (b & 0xFFFFFFFF00000000)) & 0xFFFFFFFF00000000
+        self.expected_output = []
+        
+        # Create a scoreboard on the m_axis bus
+		with warnings.catch_warnings():
+			warnings.simplefilter("ignore")
+			self.scoreboard = Scoreboard(dut)
+		self.scoreboard.add_interface(self.m_axis, self.expected_output)  
 
-    def hash_init(self, sha_type):
-        shift = WIDTH_WORDS/2 if (~sha_type & 0x2) else 0
-        H_out_next = [h_init[sha_type][i] << (shift) for i in range(N_WORDS)]
+        # Reconstrut the input transactions
+		self.s_axis_recovered = AXIS_Monitor(dut, "s_axis", dut.axi_aclk, callback=self.model)
 
-    async def _monitor_recv(self):
-        H_out_next = hash_init(self, self.bus.sha.value)
+        level = loggin.DEBUG if debug else logging.WARNING
+        self.s_axis.log.setLevel(level)
+        self.s_axis_recovered.log.setLevel(level)
 
-        while True:
-            await RisingEdge(self.clock)
-            await ReadOnly()
+    async def reset(self,duration = 2):
+		self.dut._log.debug("Resetting DUT")
+		self.dut.axi_resetn <= 0
+		await Timer(duration, units='ns')
+		await RisingEdge(self.dut.axi_aclk)
+		self.dut.axi_resetn <= 1
+		self.dut._log.debug("Out of reset")    
+    
+    def model(self, transaction):
+        print(f'Transaction = {transaction}')
+        message = transaction['data']
+        self.word_count = self.word_count + 1
+        if self.word_count == sha_iterations(self.sha_type):
+            self.expected_output.append({'data':buffer})
 
-            H_out = H_out_next
-            H_out_next = self.bus.H_out.value
 
-            if self.bus.update.value:
-                sha = self.bus.sha.value
-                update = self.bus.update.value
-                H_in = self.bus.H_in.value
-
-                H_out_next = [
-                    BinaryValue(
-                        self.sum(H_in[i], H_out_next[i], sha&0x2)
-                    ) for i in range(N_WORDS)
-                ]
-
-            if self.bus.reset.value:
-                H_out_next = hash_init(self, self.bus.sha.value)
-            else:
-                self._recv(H_out)
-
-class RegisterOutMonitor(RegisterMonitor):
-    _signals = {'H_in': 'AH', 'H_out': 'H', 'update': 'update', 'sha': 'sha_type', 'reset': 'reset'}
-    async def _monitor_recv(self):
-        while True:
-            await RisingEdge(self.clock)
-            await ReadOnly()
-
-            if not self.bus.reset.value:
-                self._recv(self.bus.H_out.value)
 
 
 def create_hash_regs(func, nregs):
@@ -87,53 +74,49 @@ def random_hash_stream(niters=100, func=getrandbits):
     for _ in range(niters):
         yield create_hash(func)
 
-async def test_hash_update(dut, H_in, sha_type=1):
-    ''' Test hash_update module '''
+def random_message(min_blocks=1, max_blocks=4, npackets=4):
+	"""random string data of a random length"""
+	for _ in range(npackets):
+		yield get_bytes(DATA_BYTE_WIDTH*random.randint(min_blocks, max_blocks), random_data())
 
-    cocotb.fork(Clock(dut.clk, 10, unit='ns').start())
+def random_wt_message(sha_type=0b01):
+	if (sha_type>>1):
+		wt_shift = 0
+	else:
+		wt_shift = 4
+	for _ in range(npackets):
+		yield get_bytes()
 
-    # Configure checker to compare module results to expectd
-    expected_output =[]
+async def run_test(dut, data_in=None, backpressure_inserter=None):
+	dut.m_axis_tready <= 0
+	dut.en <= 1
+	#dut._log.setLevel(logging.DEBUG)
 
-    dut._log.info("Configure monitors")
+	""" Setup testbench and run a test. """
+	clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
+	cocotb.fork(clock.start())  # Start the clock
+	tb = WtUnitTB(dut, True)
 
-    in_monitor = RegisterInMonitor(dut, callback=expected_output.append)
+	await tb.reset()
 
-    def check_output(transaction):
-        if not expected_output:
-            raise RuntimeError("Monitor capture unexpected update operation")
-        exp = expected_output.pop(0)
-        assert transaction == exp, f"Hash output {transaction} did not match expected result {exp}"
+	dut.m_axis_tready <= 1
+	
+	if backpressure_inserter is not None:
+		tb.backpressure.start(backpressure_inserter())
 
-    out_monitor = MatrixOutMonitor(dut, callback = check_output)
+	# Send in the packets
+	for transaction in data_in():
+		await tb.s_axis.send(transaction)
 
-    dut._log.info("Initialize and reset model")
+	# Wait for last transmission
+	while not ( dut.m_axis_tlast.value and dut.m_axis_tvalid.value and dut.m_axis_tready.value):
+		await RisingEdge(dut.axi_aclk)
+	await RisingEdge(dut.axi_aclk)
+	
+	
+	dut._log.info("DUT testbench finished!")
 
-    # Initial value
-    dut.update <= 0
-    dut.AH <= create_hash(lambda x: 0)
-    dut.sha_type <= sha_type
-
-    # Reset DUT
-    dut.reset <= 1
-    for _ in range(3):
-        await RisingEdge(dut.clk)
-    dut.reset <= 0
-    
-    dut._log.info("Test update hash module")
-
-    # Feed registers
-    for i, h in enumerate(H_in):
-        dut.AH <= h
-        if i == sha_iterations(sha_type) - 1:
-            dut.update <= 1
-        else:
-            dut.update <= 0
-        
-        await RisingEdge(dut.clk)
-
-    await RisingEdge(dut.clk)
-
+	raise tb.scoreboard.result
 
 factory = TestFactory(test_hash_update)
 factory.add_option('sha_type', [0,1,2,3])
