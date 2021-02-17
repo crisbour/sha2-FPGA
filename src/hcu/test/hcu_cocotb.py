@@ -1,8 +1,8 @@
 import cocotb
+import random
 import struct
 import warnings
 import logging
-from random import getrandbits
 
 from cocotb.triggers import Timer
 from cocotb.regression import TestFactory
@@ -27,6 +27,7 @@ class HcuTb(object):
 	def __init__(self, dut, sha_type, debug=False):
 		self.dut = dut
 		self.dut.sha_type <= sha_type
+		self.sha_type = sha_type
 		self.dut._log.info("Configure driver, monitors and scoreboard")
 		self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk)
 		self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axi_aclk, lsb_first=False)
@@ -65,31 +66,10 @@ class HcuTb(object):
 			self.expected_output.append({'data':buffer})
 
 
-
-
-def create_hash_regs(func, nregs):
-	return [func(WIDTH_WORDS) for n in range(nregs)]
-
-def create_hash(func):
-	return create_hash_regs(func, N_WORDS)
-
-def random_hash_stream(niters=100, func=getrandbits):
-	''' Generate random data for registers from HCU '''
-	for _ in range(niters):
-		yield create_hash(func)
-
-def random_message(min_blocks=1, max_blocks=4, npackets=4):
-	"""random string data of a random length"""
+def random_wt_message(sha_type=0b01, min_blocks=1, max_blocks=4, npackets=4):
+	virtual_bytes_per_block = WIDTH_WORDS*sha_iterations(sha_type)
 	for _ in range(npackets):
-		yield get_bytes(DATA_BYTE_WIDTH*random.randint(min_blocks, max_blocks), random_data())
-
-def random_wt_message(sha_type=0b01):
-	if (sha_type>>1):
-		wt_shift = 0
-	else:
-		wt_shift = 4
-	for _ in range(npackets):
-		yield get_bytes()
+		yield get_bytes(virtual_bytes_per_block* random.randint(min_blocks, max_blocks), random_data())
 
 async def run_test(dut, sha_type=None, backpressure_inserter=None):
 	dut.m_axis_tready <= 0
@@ -108,7 +88,7 @@ async def run_test(dut, sha_type=None, backpressure_inserter=None):
 		tb.backpressure.start(backpressure_inserter())
 
 	# Send in the packets
-	for transaction in data_in():
+	for transaction in random_wt_message(sha_type=sha_type):
 		await tb.s_axis.send(transaction)
 
 	# Wait for last transmission
