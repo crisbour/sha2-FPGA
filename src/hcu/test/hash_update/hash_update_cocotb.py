@@ -1,11 +1,10 @@
 import cocotb
 import struct
+
 from random import getrandbits
 
 from cocotb.triggers import Timer
-
 from cocotb.regression import TestFactory
-
 from cocotb.binary import BinaryValue
 from cocotb.clock import Clock
 from cocotb.monitors import BusMonitor

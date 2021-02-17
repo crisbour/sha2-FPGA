@@ -1,15 +1,18 @@
 import cocotb
 import struct
+import warnings
+import logging
 from random import getrandbits
 
 from cocotb.triggers import Timer
-
 from cocotb.regression import TestFactory
-
 from cocotb.binary import BinaryValue
 from cocotb.clock import Clock
 from cocotb.monitors import BusMonitor
 from cocotb.triggers import RisingEdge, ReadOnly
+from cocotb.scoreboard import Scoreboard
+
+from cocotbext.axis import AXIS_Driver, AXIS_Monitor
 
 # Data generators
 from cocotb.generators.byte import random_data, get_bytes
@@ -20,59 +23,60 @@ from hash_update.hash_init import h_init, sha_iterations
 N_WORDS = 8
 WIDTH_WORDS = 64
 
-class HCUTb(object):
-    def __init__(self, dut, sha_type, debug=False):
-        self.dut = dut
-        self.sha_type <= sha_type
-        self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk)
-        self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axi_aclk, lsb_first=False)
+class HcuTb(object):
+	def __init__(self, dut, sha_type, debug=False):
+		self.dut = dut
+		self.dut.sha_type <= sha_type
+		self.dut._log.info("Configure driver, monitors and scoreboard")
+		self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk)
+		self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axi_aclk, lsb_first=False)
 
-        self.H = h_init[sha_type]
-        self.word_count = 0
+		self.H = h_init[sha_type]
+		self.word_count = 0
 
-        self.expected_output = []
-        
-        # Create a scoreboard on the m_axis bus
+		self.expected_output = []
+		
+		# Create a scoreboard on the m_axis bus
 		with warnings.catch_warnings():
 			warnings.simplefilter("ignore")
 			self.scoreboard = Scoreboard(dut)
 		self.scoreboard.add_interface(self.m_axis, self.expected_output)  
 
-        # Reconstrut the input transactions
+		# Reconstrut the input transactions
 		self.s_axis_recovered = AXIS_Monitor(dut, "s_axis", dut.axi_aclk, callback=self.model)
 
-        level = loggin.DEBUG if debug else logging.WARNING
-        self.s_axis.log.setLevel(level)
-        self.s_axis_recovered.log.setLevel(level)
+		level = logging.DEBUG if debug else logging.WARNING
+		self.s_axis.log.setLevel(level)
+		self.s_axis_recovered.log.setLevel(level)
 
-    async def reset(self,duration = 2):
+	async def reset(self,duration = 2):
 		self.dut._log.debug("Resetting DUT")
 		self.dut.axi_resetn <= 0
 		await Timer(duration, units='ns')
 		await RisingEdge(self.dut.axi_aclk)
 		self.dut.axi_resetn <= 1
 		self.dut._log.debug("Out of reset")    
-    
-    def model(self, transaction):
-        print(f'Transaction = {transaction}')
-        message = transaction['data']
-        self.word_count = self.word_count + 1
-        if self.word_count == sha_iterations(self.sha_type):
-            self.expected_output.append({'data':buffer})
+	
+	def model(self, transaction):
+		print(f'Transaction = {transaction}')
+		message = transaction['data']
+		self.word_count = self.word_count + 1
+		if self.word_count == sha_iterations(self.sha_type):
+			self.expected_output.append({'data':buffer})
 
 
 
 
 def create_hash_regs(func, nregs):
-    return [func(WIDTH_WORDS) for n in range(nregs)]
+	return [func(WIDTH_WORDS) for n in range(nregs)]
 
 def create_hash(func):
-    return create_hash_regs(func, N_WORDS)
+	return create_hash_regs(func, N_WORDS)
 
 def random_hash_stream(niters=100, func=getrandbits):
-    ''' Generate random data for registers from HCU '''
-    for _ in range(niters):
-        yield create_hash(func)
+	''' Generate random data for registers from HCU '''
+	for _ in range(niters):
+		yield create_hash(func)
 
 def random_message(min_blocks=1, max_blocks=4, npackets=4):
 	"""random string data of a random length"""
@@ -87,15 +91,14 @@ def random_wt_message(sha_type=0b01):
 	for _ in range(npackets):
 		yield get_bytes()
 
-async def run_test(dut, data_in=None, backpressure_inserter=None):
+async def run_test(dut, sha_type=None, backpressure_inserter=None):
 	dut.m_axis_tready <= 0
 	dut.en <= 1
 	#dut._log.setLevel(logging.DEBUG)
-
 	""" Setup testbench and run a test. """
 	clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
 	cocotb.fork(clock.start())  # Start the clock
-	tb = WtUnitTB(dut, True)
+	tb = HcuTb(dut, True)
 
 	await tb.reset()
 
@@ -118,7 +121,7 @@ async def run_test(dut, data_in=None, backpressure_inserter=None):
 
 	raise tb.scoreboard.result
 
-factory = TestFactory(test_hash_update)
+factory = TestFactory(run_test)
 factory.add_option('sha_type', [0,1,2,3])
-factory.add_option('H_in', [random_hash_stream])
+#factory.add_option('H_in', [random_hash_stream])
 factory.generate_tests()
