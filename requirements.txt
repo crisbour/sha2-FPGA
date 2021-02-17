@@ -1,0 +1,8 @@
+# lxd
+# devlxd from 
+python3
+python3-setuptools
+iverilog
+verilator
+cocotb  # pip install
+cocotbext-axis  # git clone https://github.com/cristi-bourceanu/cocotbext-axis && cd cocotbext-axis && pip install .
