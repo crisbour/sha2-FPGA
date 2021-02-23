@@ -89,8 +89,11 @@ wire reset;
 assign reset = ~axi_resetn;
 
 // Computation blocks
-wire [REG_LENGTH-1 : 0] sigma0, sigma1;
+wire [REG_LENGTH-1 : 0] sigma0, sigma0_32, sigma0_64;
+wire [REG_LENGTH-1 : 0] sigma1, sigma1_32, sigma1_64;
 wire [REG_LENGTH-1 : 0] maj, ch;
+assign sigma0 = sha_type_actual[1] ? sigma0_64 : sigma0_32;
+assign sigma1 = sha_type_actual[1] ? sigma1_64 : sigma1_32;
 
 // Auxiliary variables
 integer i;
@@ -238,18 +241,34 @@ end
 
 // ------- Modules ------------
 //Computation modules
+// Ks =[2,13,22], [28,34,39]
 Sigma #(.p1(2), .p2(13), .p3(22))
-Sigma0 (
+Sigma0_32 (
     .data_width_flag(sha_type_actual[1]),
     .data_value(Reg[0]),
-    .sigma_value(sigma0)
+    .sigma_value(sigma0_32)
 );
-
+// Gs = [6,11,25], [14,18,41]
 Sigma #(.p1(6), .p2(11), .p3(25))
-Sigma1 (
+Sigma1_32 (
     .data_width_flag(sha_type_actual[1]),
     .data_value(Reg[4]),
-    .sigma_value(sigma1)
+    .sigma_value(sigma1_32)
+);
+
+// Ks =[2,13,22], [28,34,39]
+Sigma #(.p1(28), .p2(34), .p3(39))
+Sigma0_64 (
+    .data_width_flag(sha_type_actual[1]),
+    .data_value(Reg[0]),
+    .sigma_value(sigma0_64)
+);
+// Gs = [6,11,25], [14,18,41]
+Sigma #(.p1(14), .p2(18), .p3(41))
+Sigma1_64 (
+    .data_width_flag(sha_type_actual[1]),
+    .data_value(Reg[4]),
+    .sigma_value(sigma1_64)
 );
 
 Majority Maj(

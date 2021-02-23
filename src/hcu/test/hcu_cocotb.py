@@ -144,6 +144,6 @@ async def run_test(dut, sha_type=None, backpressure_inserter=None):
     raise tb.scoreboard.result
 
 factory = TestFactory(run_test)
-factory.add_option('sha_type', [1,2])
+factory.add_option('sha_type', [0,1,2,3])
 #factory.add_option('H_in', [random_hash_stream])
 factory.generate_tests()

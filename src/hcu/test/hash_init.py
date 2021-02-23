@@ -34,6 +34,11 @@ class Sha:
     _h_512 = (0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
             0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179)
 
+    _par_k = [[2, 13, 22], [28, 34, 39]]
+    _par_g = [[6, 11, 25], [14, 18, 41]]
+    _par_j = [[10, 19, 17], [6, 61, 19]]
+    _par_l = [[3, 18, 7], [7, 8, 1]]
+
     @staticmethod
     def iters(sha_type):
         return 80 if (sha_type & 0x2) else 64
@@ -54,13 +59,18 @@ class Sha:
         self.windex = 0
         self.wlength = 80 if (sha_type & 0x2) else 64
         self.bits = self.word_bytes(self.type) * 8
+        self.mod_mask = (1<<self.bits) - 1
+        self.par_k = self._par_k[self.type>>1]
+        self.par_g = self._par_g[self.type>>1]
+        self.par_j = self._par_j[self.type>>1]
+        self.par_l = self._par_l[self.type>>1]
 
     def _rotr(self, word, rsh):
-        return ((word >> rsh) | (word<<(self.bits-rsh))) & 0xFFFFFFFF
+        return ((word >> rsh) | (word<<(self.bits-rsh))) & self.mod_mask
     def _sigma0(self, word):    # Define for sha256
-        return self._rotr(word, 7) ^ self._rotr(word, 18) ^ (word >> 3)
+        return self._rotr(word, self.par_l[2]) ^ self._rotr(word, self.par_l[1]) ^ (word >> self.par_l[0])
     def _sigma1(self, word):    # Define for sha256
-        return self._rotr(word, 17) ^ self._rotr(word, 19) ^ (word >> 10)
+        return self._rotr(word, self.par_j[2]) ^ self._rotr(word, self.par_j[1]) ^ (word >> self.par_j[0])
 
     def _masked_k(self):
         if not (self.type>>1):
@@ -71,21 +81,21 @@ class Sha:
 
     def _sha256_process(self, word):
             a,b,c,d,e,f,g,h = self.regs
-            s0 = self._rotr(a, 2) ^ self._rotr(a, 13) ^ self._rotr(a, 22)
+            s0 = self._rotr(a, self.par_k[0]) ^ self._rotr(a, self.par_k[1]) ^ self._rotr(a, self.par_k[2])
             maj = (a & b) ^ (a & c) ^ (b & c)
             t2 = s0 + maj
-            s1 = self._rotr(e, 6) ^ self._rotr(e, 11) ^ self._rotr(e, 25)
+            s1 = self._rotr(e, self.par_g[0]) ^ self._rotr(e, self.par_g[1]) ^ self._rotr(e, self.par_g[2])
             ch = (e & f) ^ ((~e) & g)
             t1 = h + s1 + ch + self._masked_k() + word
 
             h = g
             g = f
             f = e
-            e = (d + t1) & 0xFFFFFFFF
+            e = (d + t1) & self.mod_mask
             d = c
             c = b
             b = a
-            a = (t1 + t2) & 0xFFFFFFFF
+            a = (t1 + t2) & self.mod_mask
             
             self.regs = [a,b,c,d,e,f,g,h]    
 
@@ -96,7 +106,7 @@ class Sha:
         self.windex = self.windex + 1
         if self.windex == self.wlength:
             self.windex = 0
-            self.hash = [(x+y) & 0xFFFFFFFF for x,y in zip(self.hash, self.regs)]
+            self.hash = [(x+y) & self.mod_mask for x,y in zip(self.hash, self.regs)]
 
     def get_regs(self):
         return self.regs
