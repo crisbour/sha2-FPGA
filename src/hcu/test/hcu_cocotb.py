@@ -19,7 +19,7 @@ from cocotbext.axis import AXIS_Driver, AXIS_Monitor
 from cocotb.generators.byte import random_data, get_bytes
 from cocotb.generators.bit import wave, intermittent_single_cycles, random_50_percent
 
-from hash_init import Sha
+from sha_model import Sha
 
 from typing import Iterator
 
