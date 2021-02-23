@@ -79,7 +79,7 @@ localparam REG_LENGTH = 64;
 
 // ------- Feedback loop --------
 // Registers and wires
-reg [REG_LENGTH-1 : 0] Reg [7:0];
+reg [REG_LENGTH-1 : 0] Reg [0:7];
 wire [REG_LENGTH-1 : 0] A_new, E_new, T1, T2, sig_ch_sum, wt_kt_sum, wt_kt_h_sum;
 
 // Status registers and wires
@@ -99,15 +99,17 @@ integer i;
 wire [63:0] H [0:7];
 wire reset_hash, update_hash;
 reg finish;
-assign m_axis_tdata = sha_type_reg[1] ?
+assign m_axis_tdata = {H[0],H[1],H[2],H[3],H[4],H[5],H[6],H[7]}; //{Reg[0],Reg[1],Reg[2],Reg[3],Reg[4],Reg[5],Reg[6],Reg[7]};  
+/* sha_type_reg[1] ?
             {H[0],H[1],H[2],H[3],H[4],H[5],H[6],H[7]} : 
             {H[0][63:32],H[1][63:32],H[2][63:32],H[3][63:32],
             H[4][63:32],H[5][63:32],H[6][63:32],H[7][63:32],
             256'b0};
+            */
 assign reset_hash = (state == RESET);
 assign update_hash = (state == UPDATE_HASH);
-// wire [1:0] sha_type_2update;
-// assign sha_type_2update = (state == RESET)? sha_type : sha_type_reg;
+wire [1:0] sha_type_actual;
+assign sha_type_actual = (state == RESET)? sha_type : sha_type_reg;
 
 
 
@@ -152,12 +154,12 @@ always @(*) begin
             s_axis_tready_next = 1;
         end
         FEED: begin
-            if (sha_type_reg != sha_type)begin
+            if (sha_type_actual != sha_type)begin
                 state_next = RESET;
             end
             else if(s_axis_tvalid) begin
-                if((sha_type_reg[1] && word_count==`BLOCK1024_WORDS-1) ||
-                    (!sha_type_reg[1] && word_count==`BLOCK512_WORDS-1)) begin
+                if((sha_type_actual[1] && word_count==`BLOCK1024_WORDS-1) ||
+                    (!sha_type_actual[1] && word_count==`BLOCK512_WORDS-1)) begin
                         state_next = UPDATE_HASH;
                         s_axis_tready_next = 0;
                     end
@@ -190,6 +192,7 @@ begin
         state <= state_next;
         s_axis_tready <= s_axis_tready_next;
         m_axis_tvalid <= m_axis_tvalid_next;
+        m_axis_tlast <= m_axis_tvalid_next;
     end
 end
 
@@ -198,8 +201,7 @@ always @(posedge axi_aclk) begin
         case(state)
             RESET: begin
                 reset_task();
-                if(en)
-                    sha_type_reg <= sha_type;
+                sha_type_reg <= sha_type;
             end
 
             UPDATE_REG: begin
@@ -238,14 +240,14 @@ end
 //Computation modules
 Sigma #(.p1(2), .p2(13), .p3(22))
 Sigma0 (
-    .data_width_flag(sha_type[1]),
+    .data_width_flag(sha_type_actual[1]),
     .data_value(Reg[0]),
     .sigma_value(sigma0)
 );
 
 Sigma #(.p1(6), .p2(11), .p3(25))
 Sigma1 (
-    .data_width_flag(sha_type[1]),
+    .data_width_flag(sha_type_actual[1]),
     .data_value(Reg[4]),
     .sigma_value(sigma1)
 );
@@ -269,7 +271,7 @@ hash_update per_block(
     .clk(axi_aclk),
     .reset(reset_hash),
 
-    .sha_type(sha_type),
+    .sha_type(sha_type_actual),
     .update(update_hash),
 
     .AH(Reg),
@@ -277,48 +279,48 @@ hash_update per_block(
 );
 
 // -------- Modulo 32/64 adders -------
-madd_32_64 wt_kt(
+madd_Kt wt_kt(
     .a(s_axis_tdata),
-    .b(Kt[word_count]),
+    .kt(Kt[word_count]),
     .s(wt_kt_sum),
-    .mode64(sha_type_reg[1])
+    .mode64(sha_type_actual[1])
 );
 
 madd_32_64 wt_kt_h(
     .a(wt_kt_sum),
     .b(Reg[7]),
     .s(wt_kt_h_sum),
-    .mode64(sha_type_reg[1])
+    .mode64(sha_type_actual[1])
 );
 madd_32_64 Sig_Ch(
     .a(sigma1),
     .b(ch),
     .s(sig_ch_sum),
-    .mode64(sha_type_reg[1])
+    .mode64(sha_type_actual[1])
 );
 madd_32_64 T1_sum(
     .a(sig_ch_sum),
     .b(wt_kt_h_sum),
     .s(T1),
-    .mode64(sha_type_reg[1])
+    .mode64(sha_type_actual[1])
 );
 madd_32_64 Sig_Maj(
     .a(sigma0),
     .b(maj),
     .s(T2),
-    .mode64(sha_type_reg[1])
+    .mode64(sha_type_actual[1])
 );
 madd_32_64 A_sum(
     .a(T1),
     .b(T2),
     .s(A_new),
-    .mode64(sha_type_reg[1])
+    .mode64(sha_type_actual[1])
 );
 madd_32_64 E_sum(
     .a(Reg[3]),
     .b(T1),
     .s(E_new),
-    .mode64(sha_type_reg[1])
+    .mode64(sha_type_actual[1])
 );
 
 
