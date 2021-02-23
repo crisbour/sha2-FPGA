@@ -39,47 +39,56 @@ module digest
     // Incomig words
     input [(S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
     input s_axis_tvalid,
-    output reg s_axis_tready
+    output reg s_axis_tready,
 
     // Message digest
     output reg [(M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
     output reg [(M_AXIS_DATA_WIDTH/8-1):0]m_axis_tkeep,
     output reg m_axis_tvalid,
-    input m_axis_tready
+    input m_axis_tready,
+    output reg m_axis_tlast
 
 );
 
 localparam AXIS_DATA_BYTES = M_AXIS_DATA_WIDTH/8;
-localparam hash_word_width = 32;
-localparam SHA224 = 2b'00;
-localparam SHA256 = 2b'01;
-localparam SHA384 = 2b'10;
-localparam SHA512 = 2b'11;
+localparam REG_WIDTH = 64;
+localparam WORD_WIDTH = 32;
 
-reg [M_AXIS_DATA_WIDTH - 1 : 0] buffer;
+localparam SHA224 = 2'b00 ;
+localparam SHA256 = 2'b01 ;
+localparam SHA384 = 2'b10 ;
+localparam SHA512 = 2'b11 ;
 
-// Function to change endianess of hash value
-function [M_AXIS_DATA_WIDTH:0] big_endian;
-input [M_AXIS_DATA_WIDTH:0] input_value;
-integer byte;
-for(byte=0;byte<AXIS_DATA_BYTES;byte=byte+1)begin
-    big_endian[(AXIS_DATA_BYTES-byte)*8-1:(AXIS_DATA_BYTES-byte-1)*8] = 
-        input_value[AXIS_DATA_BYTES*(byte+1)-1:AXIS_DATA_BYTES*byte];
-end
-endfunction //big_endian
+wire reset;
+assign reset = ~axi_resetn;
+
+wire [M_AXIS_DATA_WIDTH - 1 : 0] hash256;
+wire [M_AXIS_DATA_WIDTH - 1 : 0] hash512;
+
 
 // ---------- Reset State: Task -------
 task reset_task();
 begin
 
-    m_axis_tlast = 0;
-    m_axis_tvalid = 0;
-    s_axis_tready = 1;
-    busy_tdata = 0;
+    m_axis_tlast <= 0;
+    m_axis_tvalid <= 0;
+    s_axis_tready <= 1;
+    //busy_tdata = 0;
 
 end
 endtask
 
+big_endian Digest512(
+    .data_in(s_axis_tdata),
+    .data_out(hash512)
+);
+
+genvar i;
+generate
+for(i=0;i<8;i=i+1)
+   assign hash256[WORD_WIDTH*(i+1)-1 : WORD_WIDTH*i] = hash512[REG_WIDTH*(i+1)-1 : REG_WIDTH*(i+1)-WORD_WIDTH];
+endgenerate
+assign hash256[M_AXIS_DATA_WIDTH-1:M_AXIS_DATA_WIDTH-8*WORD_WIDTH] = {256{1'b0}};
 
 always @(posedge axi_aclk) begin
     if(reset) begin
@@ -88,28 +97,24 @@ always @(posedge axi_aclk) begin
     else begin
         if(s_axis_tvalid) begin
             if(~m_axis_tvalid) begin
-                sha_type_reg = sha_type;
                 m_axis_tvalid <= 1;
+                m_axis_tlast <= 1;
                 s_axis_tready <= 0;
-                if(~sha_type_reg[1]) begin    // sha224/256 needs only 512 bit for hash
-                    for(i=0;i<8;i++)
-                        buffer[hash_word_width*(i+1) - 1:hash_word_width*i] =
-                            s_axis_tdata[8-i][63:32];
-                    m_axis_tdata <= big_endian({(M_AXIS_DATA_WIDTH/2){1b'0},buffer}); 
-                end
+                if(~sha_type[1])     // sha224/256 needs only 512 bit for hash
+                    m_axis_tdata <= hash256;
                 else
-                    m_axis_tdata <= big_endian(s_axis_tdata);
+                    m_axis_tdata <= hash512;
             end
 
-            case (sha_type_reg):
+            case (sha_type)
                 SHA224:
-                    m_axis_tkeep <= {288{1b'0},224{1b'1}};
+                    m_axis_tkeep <= {{36{1'b0}},{28{1'b1}}};
                 SHA256:
-                    m_axis_tkeep <= {256{1b'0},256{1b'1}};
+                    m_axis_tkeep <= {{32{1'b0}},{32{1'b1}}};
                 SHA384:
-                    m_axis_tkeep <= {128{1b'1},384{1b'1}};
+                    m_axis_tkeep <= {{16{1'b0}},{48{1'b1}}};
                 SHA512:
-                    m_axis_tkeep <= {512{1b'1}}; 
+                    m_axis_tkeep <= {64{1'b1}}; 
             endcase
         end
         if(m_axis_tvalid & m_axis_tready)begin
@@ -119,7 +124,6 @@ always @(posedge axi_aclk) begin
         end
     end
 end
-
 
 endmodule
 

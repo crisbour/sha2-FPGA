@@ -1,11 +1,29 @@
 # Makefile
+TOPLEVEL_LANG = verilog
 
 PWD=$(shell pwd)
+TOPDIR=$(PWD)/../..
 
-export PYTHONPATH := $(PWD)/../../../../lib:$(PYTHONPATH)
+export PYTHONPATH := $(PWD)/../../:$(PYTHONPATH)
 
-TOPLEVEL_LANG = verilog
+SIM ?= verilator
+
+ifeq ($(SIM), verilator)
+EXTRA_ARGS += --trace --trace-structs
+#EXTRA_ARGS += --trace-fst --trace-structs -CFLAGS -DVM_TRACE_FST=1
+endif
+
+
+#not sure if only icarus include is by -I ...
+ifeq ($(SIM),icarus)
+COMPILE_ARGS+=-I$(TOPDIR)/hdl/
+else
+COMPILE_ARGS+=+incdir+$(TOPDIR)/hdl/
+endif
+
+# DUT
 VERILOG_SOURCES = $(PWD)/../hdl/digest.v
+VERILOG_SOURCES += $(PWD)/../hdl/big_endian.v
 TOPLEVEL = digest
 MODULE = digest_cocotb
 
