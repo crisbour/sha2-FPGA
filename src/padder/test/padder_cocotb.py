@@ -65,8 +65,8 @@ class PadderTB(object):
 
     def model(self, transaction):
         message = transaction['data']
-        print(f'Incoming message={message}')
-        print(f'Length={len(message)}')
+        self.dut._log.debug(f'Incoming message={message}')
+        self.dut._log.debug(f'Length={len(message)}')
         length = len(message)*8
         message += b'\x80'
         if self.sha_type>>1:
@@ -80,7 +80,7 @@ class PadderTB(object):
             message += 8*b'\x00'
         
         length_mess = struct.pack('!Q', length) #length.to_bytes(8, 'big')
-        print(f'Length message padded={length_mess}')
+        self.dut._log.debug(f'Length message padded={length_mess}')
         message += length_mess
 
         self.expected_output.append({'data': message})
@@ -97,12 +97,12 @@ def random_message(min_size=1, max_size=400, npackets=4):
 
 async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None):
     dut.m_axis_tready <= 0
-    dut.log.setLevel(logging.DEBUG)
+    #dut.log.setLevel(logging.DEBUG)
 
     """ Setup testbench and run a test. """
     clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
     cocotb.fork(clock.start())  # Start the clock
-    tb = PadderTB(dut, sha_type, True)
+    tb = PadderTB(dut, sha_type, False) # Debug=False
 
     await tb.reset()
     dut.m_axis_tready <= 1
