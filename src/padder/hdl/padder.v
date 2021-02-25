@@ -144,7 +144,6 @@ assign last_received = s_axis_tlast & s_axis_tready & s_axis_tvalid;
 
 // Complete when there are available 
 // 9 bytes (8bytes len and 1 byte = x80) for SHA256 or 17 bytes for SHA384/512
-// Needs to be fixed: If 0x80 has already been set in the previous block
 assign complete = ~reg_status_actual[0] & (reg_count | ~sha_type_actual[1]) 
                 & (next_byte < 56 - 8*sha_type_actual[1]);
 
