@@ -1,4 +1,5 @@
 import struct
+from collections import deque
 
 class Sha:
     _k= (
@@ -34,15 +35,24 @@ class Sha:
     _h_512 = (0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
             0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179)
 
+    _sha_name = ('sha224', 'sha256', 'sha384', 'sha512')
+
     _output_words = [7,8,6,8]   # no. words
     _word_length = [4,4,8,8]    # bytes
     _max_word_length = 8        # bytes
     _max_output_words = 8       # no. words
 
+    _wt_length = [4, 8]         # measured in bytes, bits: 32 and 64 respectively
+    _wt_num = [64, 80]          # Number of Wt words per block
+
     _par_k = [[2, 13, 22], [28, 34, 39]]
     _par_g = [[6, 11, 25], [14, 18, 41]]
     _par_j = [[10, 19, 17], [6, 61, 19]]
     _par_l = [[3, 18, 7], [7, 8, 1]]
+
+    @classmethod
+    def resolve_name(self,sha_type):
+        return self._sha_name[sha_type]
 
     @staticmethod
     def iters(sha_type):
@@ -69,6 +79,8 @@ class Sha:
         self.par_g = self._par_g[self.type>>1]
         self.par_j = self._par_j[self.type>>1]
         self.par_l = self._par_l[self.type>>1]
+        self.wt_len = self._wt_length[self.type>>1]
+        self.wt_num = self._wt_num[self.type>>1]
 
     def _rotr(self, word, rsh):
         return ((word >> rsh) | (word<<(self.bits-rsh))) & self.mod_mask
@@ -83,6 +95,59 @@ class Sha:
             mask = 0xFFFFFFFF00000000
             return (self._k[self.windex] & mask) >> shift
         return self._k[self.windex]
+    
+    def padder(self, message):
+        if isinstance(message, str):
+            message = bytearray(message, 'ascii')
+        elif isinstance(message, bytes):
+            message = bytearray(message)
+        elif not isinstance(message, bytearray):
+            raise TypeError
+        length = len(message)*8
+        message += b'\x80'
+        if self.type>>1:
+            length_bytes = 16
+        else:
+            length_bytes = 8
+
+        while((len(message) + length_bytes)%(64+64*(self.type>>1)) !=0 ):
+            message += b'\x00'
+
+        if self.type>>1:    # Assume that length_high fir SHA384/512 is always 0
+            message += 8*b'\x00'
+        
+        length_mess = struct.pack('!Q', length) #length.to_bytes(8, 'big')
+        self.message = message = message + length_mess
+        # assert len(message)%(64+64*(self.type>>1) == 0, 'Message not padded correctly'
+        return message
+
+    def wt_transaction(self, message=None):
+
+        if message == None:
+            message = self.message[:]
+
+        wt_total_transaction = b''
+        w = deque()
+        while len(message):
+            for t in range(self.wt_num):
+                if t<16:
+                    # print(f'self.wt_len={self.wt_len}')
+                    wt_temp, = struct.unpack('!Q',(8-self.wt_len)*b'\x00'+message[self.wt_len * t : self.wt_len * (t+1)])
+                    w.append(wt_temp)
+                    # self.update(wt_temp)
+                    wt_total_transaction += struct.pack('!Q',wt_temp)
+                else:
+                    sigma0 = self._sigma0(w[1])
+                    sigma1 = self._sigma1(w[14])
+                    wt_temp = (w[0] + sigma0 + w[9] + sigma1) & self.mod_mask
+                    # self.update(wt_temp)
+                    w.append(wt_temp)
+                    w.popleft()
+                    wt_total_transaction += struct.pack('!Q',w[-1])
+            w = deque()
+            message = message[16*self.wt_len:]
+        return wt_total_transaction
+
 
     def _sha256_process(self, word):
             a,b,c,d,e,f,g,h = self.regs
@@ -121,8 +186,8 @@ class Sha:
     
     def get_bytes_hash(self):
         buffer = b''
-        for w in self.hash:
-            buffer = buffer + struct.pack('!Q',w)
+        for h in self.hash:
+            buffer = buffer + struct.pack('!Q',h)
         return buffer
 
     def digest(self, to_digest=None):
@@ -144,3 +209,4 @@ class Sha:
                 else:
                     digest = digest + struct.pack('!I',word)
         return digest
+

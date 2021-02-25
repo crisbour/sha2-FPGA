@@ -4,7 +4,7 @@ TOPLEVEL_LANG = verilog
 PWD=$(shell pwd)
 TOPDIR=$(PWD)/..
 
-export PYTHONPATH := $(PWD)/../../../../lib:$(PYTHONPATH)
+export PYTHONPATH := $(TOPDIR)/../:$(PYTHONPATH)
 
 SIM ?= icarus
 

@@ -79,7 +79,7 @@ initial begin
 end
 
 
-assign hcu_read = m_axis_tready & m_axis_tvalid & (~sha_type_reg[1] | step_count);
+assign hcu_read = m_axis_tready & m_axis_tvalid; // & (~sha_type_reg[1] | step_count);
 assign load_reg = s_axis_tready & s_axis_tvalid;
 assign reset = ~axi_resetn;
 
@@ -160,8 +160,8 @@ reg [2:0] state, state_next;
 reg s_axis_tready_next, m_axis_tvalid_next;
 localparam IDLE = 0;
 localparam BLOCK512 = 1;
-localparam BLOCK1024_R = 2;
-localparam BLOCK1024_L = 3;
+localparam BLOCK1024_L = 2;
+localparam BLOCK1024_R = 3;
 localparam TRANSF512 = 4;
 localparam TRANSF1024 = 5;
 localparam WAIT = 6;
@@ -176,7 +176,7 @@ always @(*) begin
             m_axis_tvalid_next = 0;
             if(en) begin
                 s_axis_tready_next = 1;
-                if(sha_type[1]) state_next = BLOCK1024_R;
+                if(sha_type[1]) state_next = BLOCK1024_L;
                 else state_next = BLOCK512;
             end
         end
@@ -197,12 +197,12 @@ always @(*) begin
                 end
             end
         end
-        BLOCK1024_R: begin
+        BLOCK1024_L: begin
             if (s_axis_tvalid) begin
-               state_next = BLOCK1024_L;
+               state_next = BLOCK1024_R;
             end
         end
-        BLOCK1024_L: begin
+        BLOCK1024_R: begin
             if (s_axis_tvalid) begin
                 s_axis_tready_next = 0;
                 m_axis_tvalid_next = 1;
@@ -215,7 +215,7 @@ always @(*) begin
                 if(finish)  state_next = IDLE;
                 else begin
                     s_axis_tready_next = 1;
-                    state_next = BLOCK1024_R;
+                    state_next = BLOCK1024_L;
                 end
             end
         end
@@ -322,17 +322,21 @@ always @(posedge axi_aclk) begin
             end
 
             TRANSF1024 : begin
-                if(hcu_read) begin
-                    if(finish & loopbacks == `BLOCK1024_STEPS-2) m_axis_tlast <= 1; //Next available tdata is the last chunck "Wt" for this Message
+                if(hcu_read & loopbacks == `BLOCK1024_STEPS-1)
+                    loopbacks <= 0;
+                if(hcu_read && loopbacks<`BLOCK1024_STEPS-1) begin
+                    if(loopbacks == `BLOCK1024_STEPS-2 & finish) 
+                         m_axis_tlast <= 1; //Next available tdata is the last chunck "Wt" for this Message
                     loopbacks <= loopbacks + 1; // Count number of iterations
 
                     for(i=0;i<15;i=i+1) begin
                         Reg[i] <= Reg[i+1];
                     end
                     // This modulo addition should be replaced with two CSAs and one CPA with widths matched
-                    Reg[15] <= sigma(Reg[1],sha_type_reg,0) 
-                            | + Reg[7] + sigma(Reg[14][REG_WT_R_LENGTH-1:0],sha_type_reg,1);
-
+                    Reg[15] <= Reg[0]
+                             + sigma(Reg[1],sha_type_reg,0)
+                             + Reg[9]
+                             + sigma(Reg[14],sha_type_reg,1);  
                 end
             end
         endcase // state
@@ -350,7 +354,7 @@ end
 // `endif
 
 initial begin
-  $dumpfile ("waveform.vcd");
+  $dumpfile ("dump.vcd");
   $dumpvars (0, wt_unit);
   #1;
 end
