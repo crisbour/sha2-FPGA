@@ -15,8 +15,7 @@ from cocotb.regression import TestFactory
 from cocotb.scoreboard import Scoreboard
 from cocotbext.axis import *
 
-
-from generate_message import *
+from sha_model import Sha
 
 # Data generators
 with warnings.catch_warnings():
@@ -67,22 +66,9 @@ class PadderTB(object):
         message = transaction['data']
         self.dut._log.debug(f'Incoming message={message}')
         self.dut._log.debug(f'Length={len(message)}')
-        length = len(message)*8
-        message += b'\x80'
-        if self.sha_type>>1:
-            length_bytes = 16
-        else:
-            length_bytes = 8
-        while((len(message) + length_bytes)%(64+64*(self.sha_type>>1)) !=0 ):
-            message += b'\x00'
-
-        if self.sha_type>>1:    # Assume that length_high fir SHA384/512 is always 0
-            message += 8*b'\x00'
         
-        length_mess = struct.pack('!Q', length) #length.to_bytes(8, 'big')
-        self.dut._log.debug(f'Length message padded={length_mess}')
-        message += length_mess
-
+        sha = Sha(self.sha_type)
+        message = sha.padder(message)
         self.expected_output.append({'data': message})
 
         while message:
