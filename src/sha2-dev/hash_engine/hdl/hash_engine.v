@@ -43,7 +43,7 @@ module hash_engine
 
     // Message digest
     output [(M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
-    output [(M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
+    output reg [(M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
     output [(M_AXIS_DATA_WIDTH/8-1):0] m_axis_tkeep,
     output reg m_axis_tvalid,
     input m_axis_tready,

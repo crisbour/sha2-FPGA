@@ -99,8 +99,8 @@ set_property constrset constraints [get_runs impl_1]
 update_ip_catalog
 # SHA2
 create_ip -name nf_sha2_engine -vendor NetFPGA -library NetFPGA -module_name nf_sha2_engine_ip
-set_property CONFIG.C_M_AXIS_DATA_WIDTH ${datapath_width_bit} [get_ips switch_output_port_lookup_ip]
-set_property CONFIG.C_S_AXIS_DATA_WIDTH ${datapath_width_bit} [get_ips switch_output_port_lookup_ip]
+set_property CONFIG.C_M_AXIS_DATA_WIDTH ${datapath_width_bit} [get_ips nf_sha2_engine_ip]
+set_property CONFIG.C_S_AXIS_DATA_WIDTH ${datapath_width_bit} [get_ips nf_sha2_engine_ip]
 set_property generate_synth_checkpoint false [get_files nf_sha2_engine_ip.xci]
 reset_target all [get_ips nf_sha2_engine_ip]
 generate_target all [get_ips nf_sha2_engine_ip]
