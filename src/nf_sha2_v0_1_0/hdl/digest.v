@@ -30,8 +30,8 @@ module digest
 )
 (
     // Global Ports
-    input axi_aclk,
-    input axi_resetn,
+    input axis_aclk,
+    input axis_resetn,
 
     /*** Slave Steam Port ***/
     // Incomig words
@@ -67,7 +67,7 @@ localparam SHA384 = 2'b10 ;
 localparam SHA512 = 2'b11 ;
 
 wire reset;
-assign reset = ~axi_resetn;
+assign reset = ~axis_resetn;
 
 wire [M_AXIS_DATA_WIDTH - 1 : 0] hash256;
 wire [M_AXIS_DATA_WIDTH - 1 : 0] hash512;
@@ -100,7 +100,7 @@ for(i=0;i<8;i=i+1)
 endgenerate
 assign hash256[M_AXIS_DATA_WIDTH-1:M_AXIS_DATA_WIDTH-8*WORD_WIDTH] = {256{1'b0}};
 
-always @(posedge axi_aclk) begin
+always @(posedge axis_aclk) begin
     if(reset) begin
         reset_task();
     end 

@@ -36,9 +36,9 @@ class DigestTB(object):
         self.sha_type = sha_type	# Set it to SHA224/256
         
         self.dut._log.info("Configure driver, monitors and scoreboard")
-        self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk, lsb_first=False)
-        self.backpressure = BitDriver(dut.m_axis_tready, dut.axi_aclk)
-        self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axi_aclk)
+        self.s_axis = AXIS_Driver(dut, "s_axis", dut.axis_aclk, lsb_first=False)
+        self.backpressure = BitDriver(dut.m_axis_tready, dut.axis_aclk)
+        self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axis_aclk)
 
         self.expected_output = []
 
@@ -49,7 +49,7 @@ class DigestTB(object):
         self.scoreboard.add_interface(self.m_axis, self.expected_output)
 
         # Reconstrut the input transactions
-        self.s_axis_recovered = AXIS_Monitor(dut, "s_axis", dut.axi_aclk, callback=self.model, lsb_first=False)
+        self.s_axis_recovered = AXIS_Monitor(dut, "s_axis", dut.axis_aclk, callback=self.model, lsb_first=False)
 
         level = logging.DEBUG if debug else logging.WARNING
         self.s_axis.log.setLevel(level)
@@ -57,10 +57,10 @@ class DigestTB(object):
 
     async def reset(self,duration = 2):
         self.dut._log.debug("Resetting DUT")
-        self.dut.axi_resetn <= 0
+        self.dut.axis_resetn <= 0
         await Timer(duration, units='ns')
-        await RisingEdge(self.dut.axi_aclk)
-        self.dut.axi_resetn <= 1
+        await RisingEdge(self.dut.axis_aclk)
+        self.dut.axis_resetn <= 1
         self.dut._log.debug("Out of reset")
 
     def model(self, transaction):
@@ -84,7 +84,7 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
     #dut.log.setLevel(logging.DEBUG)
 
     """ Setup testbench and run a test. """
-    clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
+    clock = Clock(dut.axis_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
     cocotb.fork(clock.start())  # Start the clock
     tb = DigestTB(dut, sha_type, True)
 
@@ -100,9 +100,9 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
         await tb.s_axis.send(transaction)
 
     # Wait for last transmission
-    await RisingEdge(dut.axi_aclk)
+    await RisingEdge(dut.axis_aclk)
     while not ( dut.m_axis_tlast.value and dut.m_axis_tvalid.value ):
-        await RisingEdge(dut.axi_aclk)
+        await RisingEdge(dut.axis_aclk)
     
     dut._log.info("DUT testbench finished!")
 

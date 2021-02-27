@@ -30,12 +30,12 @@ module padder
 )
 (
 // Global Ports
-input axi_aclk,
-input axi_resetn,
+input axis_aclk,
+input axis_resetn,
 
 // Master Stream Port
 output [(C_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
-output reg [(C_M_AXIS_TUSER_WIDTH-1):0] c_m_axis_tuser,
+output reg [(C_M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
 output m_axis_tvalid,
 input m_axis_tready,
 output reg m_axis_tlast,
@@ -44,7 +44,7 @@ output reg m_axis_tlast,
 input [(C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
 // Bits 34 and 33 of tuser represent sha_type
 // msb is 0 if SHA224/256 and 1 if SHA384/512
-input [(C_S_AXIS_TUSER_WIDTH-1):0] c_s_axis_tuser,
+input [(C_S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
 input [((C_M_AXIS_DATA_WIDTH)/8-1):0] s_axis_tkeep,
 input s_axis_tvalid,
 output wire s_axis_tready,
@@ -132,14 +132,14 @@ initial begin
     length_high = 0;
     reg_count = 0;
     next_byte = 0;
-    c_m_axis_tuser = 0;
+    m_axis_tuser = 0;
 end
 
 
 // ----------- Logic -----------
-assign sha_type = bom   ? c_s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
+assign sha_type = bom   ? s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
                                 TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET] 
-                        : c_m_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
+                        : m_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
                                 TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET];
 // Transmitting padded message block
 assign m_axis_tvalid = sha_type[1] ? reg_status[1] : reg_status[0];
@@ -149,7 +149,7 @@ assign s_axis_tready = (m_transmit
                     | ~reg_status[0] 
                     | (sha_type[1] & ~reg_status[1])) 
                     & s_axis_tready_fsm;
-assign reset = ~axi_resetn;
+assign reset = ~axis_resetn;
 
 // FSM dependent wires
 // free_reg, empty_reg and complete and indicators for what would be the state at the next clock cycle
@@ -302,7 +302,7 @@ always @(*) begin
 end
 
 //----------Seq Logic----------------------
-always @(posedge axi_aclk)
+always @(posedge axis_aclk)
 begin: FSM_SEQ
     if(reset) begin
         state <= RESET;
@@ -322,7 +322,7 @@ end
 */
 
 // Propagate data from R_reg to L_reg if needed
-always @(posedge axi_aclk) begin
+always @(posedge axis_aclk) begin
     if(shift_reg)
         L_reg <= R_reg;
 end
@@ -339,7 +339,7 @@ task count_message;
 endtask : count_message
 
 // Feed R_reg
-always @(posedge axi_aclk) begin
+always @(posedge axis_aclk) begin
     if(reset) begin
         R_reg <= #1 0;
         L_reg <= #1 0;
@@ -359,7 +359,7 @@ always @(posedge axi_aclk) begin
                     if(s_axis_tvalid) begin
                         // Store tuser at the begining of message transmission
                         if(bom)
-                            c_m_axis_tuser <= c_s_axis_tuser;
+                            m_axis_tuser <= s_axis_tuser;
                         bom <= 0;
 
                         if(s_axis_tlast)begin

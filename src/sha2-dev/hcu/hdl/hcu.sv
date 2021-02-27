@@ -23,27 +23,27 @@
 module hcu
 #(
     // AXI Strem Data Width
-    parameter S_AXIS_DATA_WIDTH=64,
-    parameter M_AXIS_DATA_WIDTH=512,
-    parameter M_AXIS_TUSER_WIDTH=128,
-    parameter S_AXIS_TUSER_WIDTH=128
+    parameter C_S_AXIS_DATA_WIDTH=64,
+    parameter C_M_AXIS_DATA_WIDTH=512,
+    parameter C_M_AXIS_TUSER_WIDTH=128,
+    parameter C_S_AXIS_TUSER_WIDTH=128
 )
 (
     // Global Ports
-    input axi_aclk,
-    input axi_resetn,
+    input axis_aclk,
+    input axis_resetn,
 
     /*** Slave Steam Port ***/
     // Incomig words
-    input [(S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
-    input [(S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
+    input [(C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+    input [(C_S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
     input s_axis_tvalid,
     output reg s_axis_tready,
     input s_axis_tlast,
 
     // Message digest
-    output [(M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
-    output [(M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
+    output [(C_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
+    output [(C_M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
     output reg m_axis_tvalid,
     input m_axis_tready,
     output reg m_axis_tlast
@@ -91,7 +91,7 @@ wire [REG_LENGTH-1 : 0] A_new, E_new, T1, T2, sig_ch_sum, wt_kt_sum, wt_kt_h_sum
 // Status registers and wires
 reg [6:0] word_count;
 wire reset;
-assign reset = ~axi_resetn;
+assign reset = ~axis_resetn;
 
 wire [1:0] sha_type;
 assign sha_type = (s_axis_tvalid & state==RESET) ? 
@@ -195,7 +195,7 @@ always @(*) begin
 end
 
 //----------Seq Logic------------------
-always @(posedge axi_aclk)
+always @(posedge axis_aclk)
 begin
     if(reset) begin
         state <= RESET;
@@ -208,7 +208,7 @@ begin
     end
 end
 
-always @(posedge axi_aclk) begin
+always @(posedge axis_aclk) begin
     if(~reset) begin
         case(state)
             RESET: begin
@@ -296,7 +296,7 @@ Choose Ch(
 
 // Update Hash Words content
 hash_update per_block(
-    .clk(axi_aclk),
+    .clk(axis_aclk),
     .reset(reset_hash),
 
     .sha_type(sha_type),

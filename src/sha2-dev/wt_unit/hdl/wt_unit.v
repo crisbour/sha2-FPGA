@@ -24,27 +24,27 @@
 module wt_unit
 #(
     // AXI Stream Data Width
-    parameter WT_M_AXIS_DATA_WIDTH=64,
-    parameter WT_S_AXIS_DATA_WIDTH=512,
+    parameter C_M_AXIS_DATA_WIDTH=64,
+    parameter C_S_AXIS_DATA_WIDTH=512,
     parameter DATA_BLOCK_REG_WIDTH=512,
-    parameter M_AXIS_TUSER_WIDTH=128,
-    parameter S_AXIS_TUSER_WIDTH=128
+    parameter C_M_AXIS_TUSER_WIDTH=128,
+    parameter C_S_AXIS_TUSER_WIDTH=128
 )
 (
     // Global Ports
-    input axi_aclk,
-    input axi_resetn,
+    input axis_aclk,
+    input axis_resetn,
 
     // Master Stream Port
-    output [(WT_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
-    output reg [(M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
+    output [(C_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
+    output reg [(C_M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
     output reg m_axis_tvalid,
     input m_axis_tready,
     output reg m_axis_tlast,
 
     // Slave Stream Port
-    input [(WT_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
-    input [(S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
+    input [(C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+    input [(C_S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
     input s_axis_tvalid,
     output reg s_axis_tready,
     input s_axis_tlast
@@ -84,7 +84,7 @@ assign sha_type = (s_axis_tvalid & state==IDLE) ? s_axis_tuser[TUSER_SLOT_WIDTH*
 
 assign hcu_read = m_axis_tready & m_axis_tvalid;
 assign load_reg = s_axis_tready & s_axis_tvalid;
-assign reset = ~axi_resetn;
+assign reset = ~axis_resetn;
 
 // Auxiliary variables
 integer i;
@@ -212,7 +212,7 @@ always @(*) begin
 end
 
 //----------Seq Logic----------------------
-always @(posedge axi_aclk)
+always @(posedge axis_aclk)
 begin: FSM_SEQ
     if(reset) begin
         // reset_task();
@@ -223,7 +223,7 @@ begin: FSM_SEQ
     end
 end
 
-always @(posedge axi_aclk) begin
+always @(posedge axis_aclk) begin
     if(reset) begin
         state <= IDLE;
 
@@ -347,7 +347,7 @@ genvar indx,by;
 generate
     for(by=0;by<4;by=by+1)
         for(indx=0;indx<16;indx=indx+1)
-            always @(posedge axi_aclk) begin
+            always @(posedge axis_aclk) begin
                 if(state==BLOCK512 & ~reset & load_reg & ~finish) begin
                     // Change order of bytes such that msb in Message is msb in Reg
                     Reg[indx][8*by+7:8*by]     <= s_axis_tdata[32*indx+(31-8*by):32*indx+(24-8*by)];
@@ -358,7 +358,7 @@ endgenerate
 generate
     for(by=0;by<8;by=by+1)
         for(indx=0;indx<8;indx=indx+1)
-            always @(posedge axi_aclk)begin
+            always @(posedge axis_aclk)begin
                 if(state==BLOCK1024_L & ~reset & load_reg & ~finish)begin
                     // Change order of bytes such that msb in Message is msb in Reg
                     Reg[indx][8*by+7:8*by]   <= s_axis_tdata[64*indx+(63-8*by):64*indx+(56-8*by)];

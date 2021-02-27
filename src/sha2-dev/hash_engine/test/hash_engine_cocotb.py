@@ -35,9 +35,9 @@ class HashEngineTB(object):
         dut._log.info(f"Preparing tb for hashing-engine, sha_type={Sha.resolve_name(sha_type)}")
         self.dut = dut
         self.sha_type = sha_type    # sha_type_actual
-        self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk)
-        self.backpressure = BitDriver(dut.m_axis_tready, dut.axi_aclk)
-        self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axi_aclk)
+        self.s_axis = AXIS_Driver(dut, "s_axis", dut.axis_aclk)
+        self.backpressure = BitDriver(dut.m_axis_tready, dut.axis_aclk)
+        self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axis_aclk)
 
         self.expected_output = []
 
@@ -48,7 +48,7 @@ class HashEngineTB(object):
         self.scoreboard.add_interface(self.m_axis, self.expected_output)
 
         # Reconstrut the input transactions
-        self.s_axis_recovered = AXIS_Monitor(dut, "s_axis", dut.axi_aclk, callback=self.model)
+        self.s_axis_recovered = AXIS_Monitor(dut, "s_axis", dut.axis_aclk, callback=self.model)
 
         level = logging.DEBUG if debug else logging.WARNING
         self.s_axis.log.setLevel(level)
@@ -56,10 +56,10 @@ class HashEngineTB(object):
 
     async def reset(self,duration = 2):
         self.dut._log.debug("Resetting DUT")
-        self.dut.axi_resetn <= 0
+        self.dut.axis_resetn <= 0
         await Timer(duration, units='ns')
-        await RisingEdge(self.dut.axi_aclk)
-        self.dut.axi_resetn <= 1
+        await RisingEdge(self.dut.axis_aclk)
+        self.dut.axis_resetn <= 1
         self.dut._log.debug("Out of reset")
 
     def model(self, transaction):
@@ -88,7 +88,7 @@ async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None)
     #dut.log.setLevel(logging.DEBUG)
 
     """ Setup testbench and run a test. """
-    clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
+    clock = Clock(dut.axis_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
     cocotb.fork(clock.start())  # Start the clock
     tb = HashEngineTB(dut, sha_type, False) # Debug=False
 
@@ -108,7 +108,7 @@ async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None)
     # Wait for all transactions to be received
     wait_transac = True
     while(wait_transac):
-        await RisingEdge(dut.axi_aclk)
+        await RisingEdge(dut.axis_aclk)
         wait_transac = False
         for monitor, expected_output in tb.scoreboard.expected.items():
             if(len(expected_output)):

@@ -30,8 +30,8 @@ module hcu
 )
 (
     // Global Ports
-    input axi_aclk,
-    input axi_resetn,
+    input axis_aclk,
+    input axis_resetn,
 
     /*** Slave Steam Port ***/
     // Incomig words
@@ -91,7 +91,7 @@ wire [REG_LENGTH-1 : 0] A_new, E_new, T1, T2, sig_ch_sum, wt_kt_sum, wt_kt_h_sum
 // Status registers and wires
 reg [6:0] word_count;
 wire reset;
-assign reset = ~axi_resetn;
+assign reset = ~axis_resetn;
 
 wire [1:0] sha_type;
 assign sha_type = (s_axis_tvalid & state==RESET) ? 
@@ -195,7 +195,7 @@ always @(*) begin
 end
 
 //----------Seq Logic------------------
-always @(posedge axi_aclk)
+always @(posedge axis_aclk)
 begin
     if(reset) begin
         state <= RESET;
@@ -208,7 +208,7 @@ begin
     end
 end
 
-always @(posedge axi_aclk) begin
+always @(posedge axis_aclk) begin
     if(~reset) begin
         case(state)
             RESET: begin
@@ -296,7 +296,7 @@ Choose Ch(
 
 // Update Hash Words content
 hash_update per_block(
-    .clk(axi_aclk),
+    .clk(axis_aclk),
     .reset(reset_hash),
 
     .sha_type(sha_type),

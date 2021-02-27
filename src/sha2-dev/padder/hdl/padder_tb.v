@@ -123,8 +123,8 @@ end
 
 
 padder padder_ut(
-	.axi_aclk		(clk),
-    .axi_resetn		(~reset),
+	.axis_aclk		(clk),
+    .axis_resetn		(~reset),
 
     // Control
     .sha_type		(0),  // 0 if SHA256 and 1 if SHA512 or SHA384

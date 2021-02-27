@@ -124,8 +124,8 @@ end
 
 
 wt_unit wt_ut(
-	.axi_aclk		(clk),
-    .axi_resetn		(~reset),
+	.axis_aclk		(clk),
+    .axis_resetn		(~reset),
 
     // Control
     .sha_type		(2'b00),  // 0 if SHA256 and 1 if SHA512 or SHA384

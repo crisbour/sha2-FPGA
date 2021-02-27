@@ -23,28 +23,28 @@
 module digest
 #(
     // AXI Strem Data Width
-    parameter S_AXIS_DATA_WIDTH=512,
-    parameter M_AXIS_DATA_WIDTH=512,
-    parameter M_AXIS_TUSER_WIDTH=128,
-    parameter S_AXIS_TUSER_WIDTH=128
+    parameter C_S_AXIS_DATA_WIDTH=512,
+    parameter C_M_AXIS_DATA_WIDTH=512,
+    parameter C_M_AXIS_TUSER_WIDTH=128,
+    parameter C_S_AXIS_TUSER_WIDTH=128
 )
 (
     // Global Ports
-    input axi_aclk,
-    input axi_resetn,
+    input axis_aclk,
+    input axis_resetn,
 
     /*** Slave Steam Port ***/
     // Incomig words
-    input [(S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
-    input [(S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
+    input [(C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+    input [(C_S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
     input s_axis_tvalid,
     input s_axis_tlast,
     output reg s_axis_tready,
 
     // Message digest
-    output reg [(M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
-    output [(M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
-    output reg [(M_AXIS_DATA_WIDTH/8-1):0]m_axis_tkeep,
+    output reg [(C_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
+    output [(C_M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
+    output reg [(C_M_AXIS_DATA_WIDTH/8-1):0]m_axis_tkeep,
     output reg m_axis_tvalid,
     input m_axis_tready,
     output reg m_axis_tlast
@@ -57,7 +57,7 @@ localparam HASH_TUSER_SLOT = 0;
 localparam SHA_TUSER_OFFSET = 0;
 
 // DATA
-localparam AXIS_DATA_BYTES = M_AXIS_DATA_WIDTH/8;
+localparam AXIS_DATA_BYTES = C_M_AXIS_DATA_WIDTH/8;
 localparam REG_WIDTH = 64;
 localparam WORD_WIDTH = 32;
 
@@ -67,10 +67,10 @@ localparam SHA384 = 2'b10 ;
 localparam SHA512 = 2'b11 ;
 
 wire reset;
-assign reset = ~axi_resetn;
+assign reset = ~axis_resetn;
 
-wire [M_AXIS_DATA_WIDTH - 1 : 0] hash256;
-wire [M_AXIS_DATA_WIDTH - 1 : 0] hash512;
+wire [C_M_AXIS_DATA_WIDTH - 1 : 0] hash256;
+wire [C_M_AXIS_DATA_WIDTH - 1 : 0] hash512;
 
 wire [1:0] sha_type;
 assign sha_type = s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
@@ -98,9 +98,9 @@ generate
 for(i=0;i<8;i=i+1)
    assign hash256[WORD_WIDTH*(i+1)-1 : WORD_WIDTH*i] = hash512[REG_WIDTH*(i+1)-1 : REG_WIDTH*(i+1)-WORD_WIDTH];
 endgenerate
-assign hash256[M_AXIS_DATA_WIDTH-1:M_AXIS_DATA_WIDTH-8*WORD_WIDTH] = {256{1'b0}};
+assign hash256[C_M_AXIS_DATA_WIDTH-1:C_M_AXIS_DATA_WIDTH-8*WORD_WIDTH] = {256{1'b0}};
 
-always @(posedge axi_aclk) begin
+always @(posedge axis_aclk) begin
     if(reset) begin
         reset_task();
     end 

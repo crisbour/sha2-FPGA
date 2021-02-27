@@ -58,8 +58,8 @@ module nf_datapath #(
     input                                     axis_aclk,
     input                                     axis_resetn,
     //Registers clock
-    input                                     axi_aclk,
-    input                                     axi_resetn,
+    input                                     axis_aclk,
+    input                                     axis_resetn,
 
     // Slave AXI Ports
     input      [C_S_AXI_ADDR_WIDTH-1 : 0]     S0_AXI_AWADDR,
@@ -264,8 +264,8 @@ module nf_datapath #(
       .S_AXI_BRESP(S0_AXI_BRESP),  
       .S_AXI_BVALID(S0_AXI_BVALID), 
       .S_AXI_AWREADY(S0_AXI_AWREADY),
-      .S_AXI_ACLK (axi_aclk), 
-      .S_AXI_ARESETN(axi_resetn),
+      .S_AXI_ACLK (axis_aclk), 
+      .S_AXI_ARESETN(axis_resetn),
       .pkt_fwd() 
     );
     
@@ -305,15 +305,15 @@ module nf_datapath #(
       .S_AXI_BRESP(S1_AXI_BRESP),  
       .S_AXI_BVALID(S1_AXI_BVALID), 
       .S_AXI_AWREADY(S1_AXI_AWREADY),
-      .S_AXI_ACLK (axi_aclk), 
-      .S_AXI_ARESETN(axi_resetn)
+      .S_AXI_ACLK (axis_aclk), 
+      .S_AXI_ARESETN(axis_resetn)
 
 
     );
 
     nf_sha2_engine sha2_hash_engine(
-        .axi_aclk(axis_aclk),
-        .axi_resetn(axis_resetn),
+        .axis_aclk(axis_aclk),
+        .axis_resetn(axis_resetn),
         // Input
         .s_axis_tdata   (m_axis_opl_tdata), 
         .s_axis_tkeep   (m_axis_opl_tkeep), 
@@ -405,8 +405,8 @@ module nf_datapath #(
       .S_AXI_BRESP(S2_AXI_BRESP),  
       .S_AXI_BVALID(S2_AXI_BVALID), 
       .S_AXI_AWREADY(S2_AXI_AWREADY),
-      .S_AXI_ACLK (axi_aclk), 
-      .S_AXI_ARESETN(axi_resetn)
+      .S_AXI_ACLK (axis_aclk), 
+      .S_AXI_ARESETN(axis_resetn)
     ); 
     
 endmodule
