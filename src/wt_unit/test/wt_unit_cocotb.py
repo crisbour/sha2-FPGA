@@ -37,9 +37,9 @@ class WtUnitTB(object):
         self.sha_type = sha_type
         self.dut._log.info(f'Creating testbench with sha_type={Sha.resolve_name(sha_type)}')
 
-        self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk)
-        self.backpressure = BitDriver(dut.m_axis_tready, dut.axi_aclk)
-        self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axi_aclk, lsb_first=False)
+        self.s_axis = AXIS_Driver(dut, "s_axis", dut.axis_aclk)
+        self.backpressure = BitDriver(dut.m_axis_tready, dut.axis_aclk)
+        self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axis_aclk, lsb_first=False)
 
         self.expected_output = []
 
@@ -50,7 +50,7 @@ class WtUnitTB(object):
         self.scoreboard.add_interface(self.m_axis, self.expected_output)
 
         # Reconstrut the input transactions
-        self.s_axis_recovered = AXIS_Monitor(dut, "s_axis", dut.axi_aclk, callback=self.model)
+        self.s_axis_recovered = AXIS_Monitor(dut, "s_axis", dut.axis_aclk, callback=self.model)
 
         level = logging.DEBUG if debug else logging.WARNING
         self.s_axis.log.setLevel(level)
@@ -58,10 +58,10 @@ class WtUnitTB(object):
 
     async def reset(self,duration = 2):
         self.dut._log.debug("Resetting DUT")
-        self.dut.axi_resetn <= 0
+        self.dut.axis_resetn <= 0
         await Timer(duration, units='ns')
-        await RisingEdge(self.dut.axi_aclk)
-        self.dut.axi_resetn <= 1
+        await RisingEdge(self.dut.axis_aclk)
+        self.dut.axis_resetn <= 1
         self.dut._log.debug("Out of reset")
 
     def _rotr(self, word, rsh):
@@ -92,7 +92,7 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
     dut.m_axis_tready <= 0;
 
     """ Setup testbench and run a test. """
-    clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
+    clock = Clock(dut.axis_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
     cocotb.fork(clock.start())  # Start the clock
     tb = WtUnitTB(dut, sha_type, True)
 
@@ -110,8 +110,8 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
 
     # Wait for last transmission
     while not ( dut.m_axis_tlast.value and dut.m_axis_tvalid.value and dut.m_axis_tready.value):
-        await RisingEdge(dut.axi_aclk)
-    await RisingEdge(dut.axi_aclk)
+        await RisingEdge(dut.axis_aclk)
+    await RisingEdge(dut.axis_aclk)
     
     
     dut._log.info("DUT testbench finished!")

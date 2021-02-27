@@ -31,8 +31,8 @@ module padder
 )
 (
 // Global Ports
-input axi_aclk,
-input axi_resetn,
+input axis_aclk,
+input axis_resetn,
 
 // Master Stream Port
 output [(P_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
@@ -148,7 +148,7 @@ assign s_axis_tready = (m_transmit
                     | ~reg_status[0] 
                     | (sha_type[1] & ~reg_status[1])) 
                     & s_axis_tready_fsm;
-assign reset = ~axi_resetn;
+assign reset = ~axis_resetn;
 
 // FSM dependent wires
 // free_reg, empty_reg and complete and indicators for what would be the state at the next clock cycle
@@ -301,7 +301,7 @@ always @(*) begin
 end
 
 //----------Seq Logic----------------------
-always @(posedge axi_aclk)
+always @(posedge axis_aclk)
 begin: FSM_SEQ
     if(reset) begin
         state <= RESET;
@@ -321,7 +321,7 @@ end
 */
 
 // Propagate data from R_reg to L_reg if needed
-always @(posedge axi_aclk) begin
+always @(posedge axis_aclk) begin
     if(shift_reg)
         L_reg <= R_reg;
 end
@@ -338,7 +338,7 @@ task count_message;
 endtask : count_message
 
 // Feed R_reg
-always @(posedge axi_aclk) begin
+always @(posedge axis_aclk) begin
     if(reset) begin
         R_reg <= #1 0;
         L_reg <= #1 0;
