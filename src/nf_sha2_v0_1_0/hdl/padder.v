@@ -23,11 +23,10 @@
 module padder
 #(
     // AXI Stream Data Width
-    parameter P_M_AXIS_DATA_WIDTH=512,
-    parameter P_S_AXIS_DATA_WIDTH=512,
-    parameter DATA_BLOCK_REG_WIDTH=512,
-    parameter M_AXIS_TUSER_WIDTH=128,
-    parameter S_AXIS_TUSER_WIDTH=128
+    parameter C_M_AXIS_DATA_WIDTH=512,
+    parameter C_S_AXIS_DATA_WIDTH=512,
+    parameter C_M_AXIS_TUSER_WIDTH=128,
+    parameter C_S_AXIS_TUSER_WIDTH=128
 )
 (
 // Global Ports
@@ -35,22 +34,24 @@ input axis_aclk,
 input axis_resetn,
 
 // Master Stream Port
-output [(P_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
-output reg [(M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
+output [(C_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
+output reg [(C_M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
 output m_axis_tvalid,
 input m_axis_tready,
 output reg m_axis_tlast,
 
 // Slave Stream Port
-input [(P_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+input [(C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
 // Bits 34 and 33 of tuser represent sha_type
 // msb is 0 if SHA224/256 and 1 if SHA384/512
-input [(S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
-input [((P_M_AXIS_DATA_WIDTH)/8-1):0] s_axis_tkeep,
+input [(C_S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
+input [((C_M_AXIS_DATA_WIDTH)/8-1):0] s_axis_tkeep,
 input s_axis_tvalid,
 output wire s_axis_tready,
 input s_axis_tlast
 );
+
+localparam DATA_BLOCK_REG_WIDTH=512;
 
 // ----- TUSER specs for identify sha_type ----
 localparam TUESR_SLOT_OFFSET = 32;
@@ -91,8 +92,8 @@ end
 endfunction //big_endian
 
 // ---------- Internal Parameters ------------------
-localparam P_S_AXIS_TKEEP_WIDTH = P_M_AXIS_DATA_WIDTH/8;
-localparam NUM_BYTES_WIDTH = log2(P_S_AXIS_TKEEP_WIDTH);
+localparam C_S_AXIS_TKEEP_WIDTH = C_M_AXIS_DATA_WIDTH/8;
+localparam NUM_BYTES_WIDTH = log2(C_S_AXIS_TKEEP_WIDTH);
 localparam LEN_FIELD_BYTES = 8;
 localparam LEN_FIELD_WIDTH = 8 * LEN_FIELD_BYTES;
 

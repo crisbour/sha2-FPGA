@@ -11,7 +11,7 @@ set lib_name NetFPGA
 #####################################
 # Project Settings
 #####################################
-create_project -name ${design} -force -dir "./${proj_dir}" -part ${device}
+create_project -name ${design} -force -dir "./${proj_dir}" -part ${device} -ip
 set_property source_mgmt_mode All [current_project]  
 set_property top ${top} [current_fileset]
 
@@ -46,7 +46,7 @@ read_verilog "./hdl/padder.v"
 read_verilog "./hdl/wt_sigma_define.v"
 read_verilog "./hdl/wt_unit.v"  
 update_compile_order -fileset sources_1
-# update_compile_order -fileset sim_1
+update_compile_order -fileset sim_1
 
 # Package IP
 ipx::package_project
@@ -94,3 +94,5 @@ ipx::check_integrity [ipx::current_core]
 ipx::save_core [ipx::current_core]
 update_ip_catalog
 close_project
+
+file delete -force ${proj_dir} 

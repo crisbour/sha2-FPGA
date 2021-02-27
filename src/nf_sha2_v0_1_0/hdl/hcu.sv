@@ -23,10 +23,10 @@
 module hcu
 #(
     // AXI Strem Data Width
-    parameter S_AXIS_DATA_WIDTH=64,
-    parameter M_AXIS_DATA_WIDTH=512,
-    parameter M_AXIS_TUSER_WIDTH=128,
-    parameter S_AXIS_TUSER_WIDTH=128
+    parameter C_S_AXIS_DATA_WIDTH=64,
+    parameter C_M_AXIS_DATA_WIDTH=512,
+    parameter C_M_AXIS_TUSER_WIDTH=128,
+    parameter C_S_AXIS_TUSER_WIDTH=128
 )
 (
     // Global Ports
@@ -35,15 +35,15 @@ module hcu
 
     /*** Slave Steam Port ***/
     // Incomig words
-    input [(S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
-    input [(S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
+    input [(C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+    input [(C_S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
     input s_axis_tvalid,
     output reg s_axis_tready,
     input s_axis_tlast,
 
     // Message digest
-    output [(M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
-    output [(M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
+    output [(C_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
+    output [(C_M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
     output reg m_axis_tvalid,
     input m_axis_tready,
     output reg m_axis_tlast
