@@ -55,8 +55,8 @@ module nf_datapath #(
     parameter NUM_QUEUES=5
 ) (
     //Datapath clock
-    input                                     axis_aclk,
-    input                                     axis_resetn,
+    input                                     axi_aclk,
+    input                                     axi_resetn,
     //Registers clock
     input                                     axis_aclk,
     input                                     axis_resetn,
@@ -264,8 +264,8 @@ module nf_datapath #(
       .S_AXI_BRESP(S0_AXI_BRESP),  
       .S_AXI_BVALID(S0_AXI_BVALID), 
       .S_AXI_AWREADY(S0_AXI_AWREADY),
-      .S_AXI_ACLK (axis_aclk), 
-      .S_AXI_ARESETN(axis_resetn),
+      .S_AXI_ACLK (axi_aclk), 
+      .S_AXI_ARESETN(axi_resetn),
       .pkt_fwd() 
     );
     
@@ -273,8 +273,8 @@ module nf_datapath #(
     
      //Output Port Lookup  
        switch_output_port_lookup_ip  output_port_lookup_1  (
-      .axis_aclk(axis_aclk), 
-      .axis_resetn(axis_resetn), 
+      .axis_aclk    (axis_aclk), 
+      .axis_resetn  (axis_resetn), 
       .m_axis_tdata (m_axis_opl_tdata), 
       .m_axis_tkeep (m_axis_opl_tkeep), 
       .m_axis_tuser (m_axis_opl_tuser), 
@@ -305,15 +305,15 @@ module nf_datapath #(
       .S_AXI_BRESP(S1_AXI_BRESP),  
       .S_AXI_BVALID(S1_AXI_BVALID), 
       .S_AXI_AWREADY(S1_AXI_AWREADY),
-      .S_AXI_ACLK (axis_aclk), 
-      .S_AXI_ARESETN(axis_resetn)
+      .S_AXI_ACLK (axi_aclk), 
+      .S_AXI_ARESETN(axi_resetn)
 
 
     );
 
-    nf_sha2_engine sha2_hash_engine(
-        .axis_aclk(axis_aclk),
-        .axis_resetn(axis_resetn),
+    nf_sha2_engine_ip sha2_hash_engine(
+        .axis_aclk    (axis_aclk),
+        .axis_resetn  (axis_resetn),
         // Input
         .s_axis_tdata   (m_axis_opl_tdata), 
         .s_axis_tkeep   (m_axis_opl_tkeep), 
@@ -327,7 +327,7 @@ module nf_datapath #(
         .m_axis_tuser (m_axis_ns2_tuser), 
         .m_axis_tvalid(m_axis_ns2_tvalid), 
         .m_axis_tready(m_axis_ns2_tready), 
-        .m_axis_tlast (m_axis_ns2_tlast),
+        .m_axis_tlast (m_axis_ns2_tlast)
 
 
     );
@@ -405,8 +405,8 @@ module nf_datapath #(
       .S_AXI_BRESP(S2_AXI_BRESP),  
       .S_AXI_BVALID(S2_AXI_BVALID), 
       .S_AXI_AWREADY(S2_AXI_AWREADY),
-      .S_AXI_ACLK (axis_aclk), 
-      .S_AXI_ARESETN(axis_resetn)
+      .S_AXI_ACLK (axi_aclk), 
+      .S_AXI_ARESETN(axi_resetn)
     ); 
     
 endmodule
