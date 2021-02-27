@@ -1,0 +1,2 @@
+`define BLOCK1024_WORDS 80
+`define BLOCK512_WORDS 64

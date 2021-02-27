@@ -70,9 +70,6 @@ class HcuTb(object):
         # print(f'Transaction = {transaction}')
         message = transaction['data']
         # print(f'Length or received tansaction = {len(message)}')
-        w = deque()
-        abc = deque()
-        buffer = b''
         words_block = Sha.iters(self.sha_type)
         sha = Sha(self.sha_type)
         while(message):
@@ -82,7 +79,7 @@ class HcuTb(object):
                 sha.update(w_temp)
             message = message[BYTE_WIDTH_WORDS*words_block:]
         
-        print(f'Hash Computed = {[hex(reg) for  reg in sha.get_hash()]}')
+        self.dut._log.debug(f'Hash Computed = {[hex(reg) for  reg in sha.get_hash()]}')
         self.expected_output.append({'data': sha.get_bytes_hash(), 'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
 
 def random_wt(sha_type) -> Iterator[int]:

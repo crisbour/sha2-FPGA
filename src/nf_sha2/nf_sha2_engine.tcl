@@ -1,67 +1,54 @@
- 
- 
-#
-# Copyright (c) 2015 Noa Zilberman
-# Modified by Salvator Galea
-# Modified by Cristian Bourceanu
-# All rights reserved.
-#
-# This software was developed by
-# Stanford University and the University of Cambridge Computer Laboratory
-# under National Science Foundation under Grant No. CNS-0855268,
-# the University of Cambridge Computer Laboratory under EPSRC INTERNET Project EP/H040536/1 and
-# by the University of Cambridge Computer Laboratory under DARPA/AFRL contract FA8750-11-C-0249 ("MRC2"), 
-# as part of the DARPA MRC research programme.
-#
-# @NETFPGA_LICENSE_HEADER_START@
-#
-# Licensed to NetFPGA C.I.C. (NetFPGA) under one or more contributor
-# license agreements.  See the NOTICE file distributed with this work for
-# additional information regarding copyright ownership.  NetFPGA licenses this
-# file to you under the NetFPGA Hardware-Software License, Version 1.0 (the
-# "License"); you may not use this file except in compliance with the
-# License.  You may obtain a copy of the License at:
-#
-#   http://www.netfpga-cic.org
-#
-# Unless required by applicable law or agreed to in writing, Work distributed
-# under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-# CONDITIONS OF ANY KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations under the License.
-#
-# @NETFPGA_LICENSE_HEADER_END@
-#
 
 # Vivado Launch Script
 #### Change design settings here #######
-set design hash_engine
+set design nf_sha2_engine
 set top hash_engine
 set device $::env(DEVICE)
 set proj_dir ./ip_proj
 set ip_version 1.00
 set lib_name NetFPGA
-#####################################
-# set IP paths
-#####################################
 
 #####################################
 # Project Settings
 #####################################
-create_project -name ${design} -force -dir "./${proj_dir}" -part ${device} -ip
+create_project -name ${design} -force -dir "./${proj_dir}" -part ${device}
 set_property source_mgmt_mode All [current_project]  
 set_property top ${top} [current_fileset]
-set_property ip_repo_paths $::env(NFPLUS_FOLDER)/hw/lib/  [current_fileset]
+
+# local IP repo
+if { [info exists ::env(NFPLUS_FOLDER)] } {
+    puts "Setting ip_rep to NFPLUS_FOLDER"
+   set_property ip_repo_paths $::env(NFPLUS_FOLDER)  [current_fileset] 
+} else {
+    puts "Setting ip_repo to current directory"
+    set_property ip_repo_paths [pwd]  [current_fileset]
+}
 update_ip_catalog
-puts "nf_endianess_manager"
+
+puts "nf_sha2_engine build"
 # Project Constraints
 #####################################
 # Project Structure & IP Build
 #####################################
 
-read_verilog "./hdl/bridge.v"
-read_verilog "./hdl/nf_endianess_manager.v"
+read_verilog "./hdl/Choose.v"
+read_verilog "./hdl/Majority.v"
+read_verilog "./hdl/Sigma.v"
+read_verilog "./hdl/big_endian.v"
+read_verilog "./hdl/digest.v"
+read_verilog "./hdl/hash_engine.v"
+read_verilog "./hdl/hash_update.sv"
+read_verilog "./hdl/hcu.sv"
+read_verilog "./hdl/hcu_define.v"
+read_verilog "./hdl/madd_32_64.v"
+read_verilog "./hdl/madd_Kt.v"
+read_verilog "./hdl/padder.v"
+read_verilog "./hdl/wt_sigma_define.v"
+read_verilog "./hdl/wt_unit.v"  
 update_compile_order -fileset sources_1
-update_compile_order -fileset sim_1
+# update_compile_order -fileset sim_1
+
+# Package IP
 ipx::package_project
 
 set_property name ${design} [ipx::current_core]
@@ -99,12 +86,6 @@ set_property value_resolve_type {user} [ipx::get_user_parameters C_S_AXIS_TUSER_
 set_property display_name {C_S_AXIS_TUSER_WIDTH} [ipx::get_user_parameters C_S_AXIS_TUSER_WIDTH]
 set_property value {128} [ipx::get_user_parameters C_S_AXIS_TUSER_WIDTH]
 set_property value_format {long} [ipx::get_user_parameters C_S_AXIS_TUSER_WIDTH]
-
-
-ipx::add_bus_parameter FREQ_HZ [ipx::get_bus_interfaces S_AXIS -of_objects [ipx::current_core]]
-ipx::add_bus_parameter FREQ_HZ [ipx::get_bus_interfaces M_AXIS -of_objects [ipx::current_core]]
-ipx::add_bus_parameter FREQ_HZ [ipx::get_bus_interfaces S_AXIS_INT -of_objects [ipx::current_core]]
-ipx::add_bus_parameter FREQ_HZ [ipx::get_bus_interfaces M_AXIS_INT -of_objects [ipx::current_core]]
 
 update_ip_catalog -rebuild 
 ipx::infer_user_parameters [ipx::current_core]

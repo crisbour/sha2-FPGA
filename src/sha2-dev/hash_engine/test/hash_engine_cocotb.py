@@ -32,7 +32,7 @@ PAD_BYTES = 9
 class HashEngineTB(object):
 
     def __init__(self, dut, sha_type, debug=False):
-        dut._log.info("Preparing tb for padder, sha_type={sha_type}")
+        dut._log.info(f"Preparing tb for hashing-engine, sha_type={Sha.resolve_name(sha_type)}")
         self.dut = dut
         self.sha_type = sha_type    # sha_type_actual
         self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk)
@@ -67,9 +67,13 @@ class HashEngineTB(object):
         self.dut._log.debug(f'Incoming message={message}')
         self.dut._log.debug(f'Length={len(message)}')
 
-        sha = hashlib.sha256()
-        sha.update(message)
-        digest = sha.digest()    
+        # sha = hashlib.sha256()
+        # sha.update(message)
+        # digest = sha.digest()    
+        sha = Sha(self.sha_type)
+        sha.padder(message)
+        sha.wt_transaction()
+        digest = sha.digest()
 
         self.expected_output.append({'data': digest,'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
 
@@ -81,7 +85,7 @@ def random_message(min_size=1, max_size=400, npackets=4):
 
 async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None):
     dut.m_axis_tready <= 0
-    dut.log.setLevel(logging.DEBUG)
+    #dut.log.setLevel(logging.DEBUG)
 
     """ Setup testbench and run a test. """
     clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
@@ -101,13 +105,14 @@ async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None)
         tb.s_axis.bus.tuser <= BinaryValue(94*'0'+"{0:02b}".format(sha_type)+32*'0')
         await tb.s_axis.send(transaction)
 
-    # Wait for last transmission
-    await RisingEdge(dut.axi_aclk)
-    while not ( dut.m_axis_tlast.value and dut.m_axis_tvalid.value and dut.m_axis_tready.value ):
+    # Wait for all transactions to be received
+    wait_transac = True
+    while(wait_transac):
         await RisingEdge(dut.axi_aclk)
-
-    for _ in range(3):
-        await RisingEdge(dut.axi_aclk)
+        wait_transac = False
+        for monitor, expected_output in tb.scoreboard.expected.items():
+            if(len(expected_output)):
+                wait_transac = True
     
     dut._log.info("DUT testbench finished!")
 
