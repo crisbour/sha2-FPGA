@@ -6,7 +6,12 @@ TOPDIR=$(PWD)/..
 
 export PYTHONPATH := $(TOPDIR)/../:$(PYTHONPATH)
 
-SIM ?= icarus
+SIM ?= verilator
+
+ifeq ($(SIM), verilator)
+EXTRA_ARGS += --trace --trace-structs
+#EXTRA_ARGS += --trace-fst --trace-structs -CFLAGS -DVM_TRACE_FST=1
+endif
 
 #not sure if only icarus include is by -I ...
 ifeq ($(SIM),icarus)

@@ -14,6 +14,7 @@ from cocotb.result import ReturnValue
 from cocotb.regression import TestFactory
 from cocotb.scoreboard import Scoreboard
 from cocotbext.axis import AXIS_Driver, AXIS_Monitor
+from cocotb.binary import BinaryValue
 
 from collections import deque
 
@@ -72,7 +73,7 @@ class WtUnitTB(object):
         message = transaction['data']
         sha = Sha(self.sha_type)
         buffer = sha.wt_transaction(message=message)
-        self.expected_output.append({'data': buffer})
+        self.expected_output.append({'data': buffer, 'user':128*'0'})
 
 def random_message(sha_type ,min_blocks=1, max_blocks=4, npackets=4):
     """random string data of a random length"""
@@ -106,6 +107,7 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
 
     # Send in the packets
     for transaction in data_in(sha_type):
+        tb.s_axis.bus.tuser <= BinaryValue("0"*128)
         await tb.s_axis.send(transaction)
 
     # Wait for last transmission

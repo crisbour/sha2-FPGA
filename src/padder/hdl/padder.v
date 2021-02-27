@@ -25,7 +25,9 @@ module padder
     // AXI Stream Data Width
     parameter P_M_AXIS_DATA_WIDTH=512,
     parameter P_S_AXIS_DATA_WIDTH=512,
-    parameter DATA_BLOCK_REG_WIDTH=512
+    parameter DATA_BLOCK_REG_WIDTH=512,
+    parameter M_AXIS_TUSER_WIDTH=128,
+    parameter S_AXIS_TUSER_WIDTH=128
 )
 (
 // Global Ports
@@ -38,12 +40,14 @@ input en,   // 1 if the hashing engine has been enabled by the scheduler
 
 // Master Stream Port
 output [(P_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
+output reg [(M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
 output m_axis_tvalid,
 input m_axis_tready,
 output reg m_axis_tlast,
 
 // Slave Stream Port
 input [(P_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+input [(S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
 input [((P_M_AXIS_DATA_WIDTH)/8-1):0] s_axis_tkeep,
 input s_axis_tvalid,
 output wire s_axis_tready,
@@ -82,7 +86,7 @@ end
 endfunction //big_endian
 
 // ---------- Internal Parameters ------------------
-localparam P_S_AXIS_TKEEP_WIDTH=P_M_AXIS_DATA_WIDTH/8;
+localparam P_S_AXIS_TKEEP_WIDTH = P_M_AXIS_DATA_WIDTH/8;
 localparam NUM_BYTES_WIDTH = log2(P_S_AXIS_TKEEP_WIDTH);
 localparam LEN_FIELD_BYTES = 8;
 localparam LEN_FIELD_WIDTH = 8 * LEN_FIELD_BYTES;
@@ -95,16 +99,20 @@ reg [DATA_BLOCK_REG_WIDTH-1:0] L_reg;
 reg [DATA_BLOCK_REG_WIDTH-1:0] pad;
 reg [1:0] reg_status;
 wire [1:0] reg_status_actual;
+
 reg [NUM_BYTES_WIDTH-1:0] shift_inc;
 reg [NUM_BYTES_WIDTH-1:0] shift_measure;
 reg [NUM_BYTES_WIDTH-1:0] last_valid_byte;
 reg [NUM_BYTES_WIDTH-1:0] next_byte;
+
 reg [63:0] length_low;
 reg [63:0] length_high;   // Theoretically used only for SHA384/512, practically never
 reg reg_count;
 wire reset;
 reg [1:0] sha_type_reg;
 wire [1:0] sha_type_actual;
+
+wire shift_reg, m_transmit, empty_regs, last_received, complete;
 
 // Initial values
 initial begin
@@ -117,6 +125,7 @@ initial begin
     length_high = 0;
     reg_count = 0;
     next_byte = 0;
+    m_axis_tuser = 0;
 end
 
 
@@ -147,6 +156,79 @@ assign last_received = s_axis_tlast & s_axis_tready & s_axis_tvalid;
 assign complete = ~reg_status_actual[0] & (reg_count | ~sha_type_actual[1]) 
                 & (next_byte < 56 - 8*sha_type_actual[1]);
 
+
+
+// ---------- Decode TKEEP ------
+always @(*) begin
+    // encode FIFO IN (8b->4b)
+          case (s_axis_tkeep)
+              64'h1                : last_valid_byte = 6'h0;
+              64'h3                : last_valid_byte = 6'h1;
+              64'h7                : last_valid_byte = 6'h2;
+              64'hF                : last_valid_byte = 6'h3;
+              64'h1F               : last_valid_byte = 6'h4;
+              64'h3F               : last_valid_byte = 6'h5;
+              64'h7F               : last_valid_byte = 6'h6;
+              64'hFF               : last_valid_byte = 6'h7;
+              64'h1FF              : last_valid_byte = 6'h8;
+              64'h3FF              : last_valid_byte = 6'h9;
+              64'h7FF              : last_valid_byte = 6'ha;
+              64'hFFF              : last_valid_byte = 6'hb;
+              64'h1FFF             : last_valid_byte = 6'hc;
+              64'h3FFF             : last_valid_byte = 6'hd;
+              64'h7FFF             : last_valid_byte = 6'he;
+              64'hFFFF             : last_valid_byte = 6'hf;
+              64'h1FFFF            : last_valid_byte = 6'h10;
+              64'h3FFFF            : last_valid_byte = 6'h11;
+              64'h7FFFF            : last_valid_byte = 6'h12;
+              64'hFFFFF            : last_valid_byte = 6'h13;
+              64'h1FFFFF           : last_valid_byte = 6'h14;
+              64'h3FFFFF           : last_valid_byte = 6'h15;
+              64'h7FFFFF           : last_valid_byte = 6'h16;
+              64'hFFFFFF           : last_valid_byte = 6'h17;
+              64'h1FFFFFF          : last_valid_byte = 6'h18;
+              64'h3FFFFFF          : last_valid_byte = 6'h19;
+              64'h7FFFFFF          : last_valid_byte = 6'h1a;
+              64'hFFFFFFF          : last_valid_byte = 6'h1b;
+              64'h1FFFFFFF         : last_valid_byte = 6'h1c;
+              64'h3FFFFFFF         : last_valid_byte = 6'h1d;
+              64'h7FFFFFFF         : last_valid_byte = 6'h1e;
+              64'hFFFFFFFF         : last_valid_byte = 6'h1f;
+              64'h1_FFFFFFFF       : last_valid_byte = 6'h20;
+              64'h3_FFFFFFFF       : last_valid_byte = 6'h21;
+              64'h7_FFFFFFFF       : last_valid_byte = 6'h22;
+              64'hF_FFFFFFFF       : last_valid_byte = 6'h23;
+              64'h1F_FFFFFFFF      : last_valid_byte = 6'h24;
+              64'h3F_FFFFFFFF      : last_valid_byte = 6'h25;
+              64'h7F_FFFFFFFF      : last_valid_byte = 6'h26;
+              64'hFF_FFFFFFFF      : last_valid_byte = 6'h27;
+              64'h1FF_FFFFFFFF     : last_valid_byte = 6'h28;
+              64'h3FF_FFFFFFFF     : last_valid_byte = 6'h29;
+              64'h7FF_FFFFFFFF     : last_valid_byte = 6'h2a;
+              64'hFFF_FFFFFFFF     : last_valid_byte = 6'h2b;
+              64'h1FFF_FFFFFFFF    : last_valid_byte = 6'h2c;
+              64'h3FFF_FFFFFFFF    : last_valid_byte = 6'h2d;
+              64'h7FFF_FFFFFFFF    : last_valid_byte = 6'h2e;
+              64'hFFFF_FFFFFFFF    : last_valid_byte = 6'h2f;
+              64'h1FFFF_FFFFFFFF   : last_valid_byte = 6'h30;
+              64'h3FFFF_FFFFFFFF   : last_valid_byte = 6'h31;
+              64'h7FFFF_FFFFFFFF   : last_valid_byte = 6'h32;
+              64'hFFFFF_FFFFFFFF   : last_valid_byte = 6'h33;
+              64'h1FFFFF_FFFFFFFF  : last_valid_byte = 6'h34;
+              64'h3FFFFF_FFFFFFFF  : last_valid_byte = 6'h35;
+              64'h7FFFFF_FFFFFFFF  : last_valid_byte = 6'h36;
+              64'hFFFFFF_FFFFFFFF  : last_valid_byte = 6'h37;
+              64'h1FFFFFF_FFFFFFFF : last_valid_byte = 6'h38;
+              64'h3FFFFFF_FFFFFFFF : last_valid_byte = 6'h39;
+              64'h7FFFFFF_FFFFFFFF : last_valid_byte = 6'h3a;
+              64'hFFFFFFF_FFFFFFFF : last_valid_byte = 6'h3b;
+              64'h1FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3c;
+              64'h3FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3d;
+              64'h7FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3e;
+              64'hFFFFFFFF_FFFFFFFF: last_valid_byte = 6'h3f;
+              default:  last_valid_byte = 6'h00;
+          endcase
+end
 
 // ---------- FSM --------------
 //FSM registers
@@ -258,8 +340,8 @@ always @(posedge axi_aclk) begin
         case(state)
             IDLE: begin
                 reg_status <= 2'b00;
-                length_low <= 0;
-                length_high <= 0;
+                length_low = 0;
+                length_high = 0;
                 reg_count <= 0;
                 sha_type_reg <= sha_type;
             end
@@ -270,22 +352,22 @@ always @(posedge axi_aclk) begin
 
                         if(s_axis_tlast)begin
                             // Find the last valid byte in tdata with binary search
-                            last_valid_byte = 0;
-                            shift_inc = P_S_AXIS_TKEEP_WIDTH >> 1;
-                            shift_measure = P_S_AXIS_TKEEP_WIDTH >> 1;
-                            while(shift_inc) begin
-                                shift_inc = shift_inc >> 1;
-                                if(s_axis_tkeep >> shift_measure)begin
-                                    last_valid_byte = shift_measure;
-                                    shift_measure = shift_measure + shift_inc;
-                                end else begin
-                                    shift_measure = shift_measure - shift_inc;
-                                end
-                            end
+                            // last_valid_byte = 0;
+                            // shift_inc = P_S_AXIS_TKEEP_WIDTH >> 1;
+                            // shift_measure = P_S_AXIS_TKEEP_WIDTH >> 1;
+                            // while(shift_inc>0) begin
+                            //     shift_inc = shift_inc >> 1;
+                            //     if(s_axis_tkeep >> shift_measure > 0)begin
+                            //         last_valid_byte = shift_measure;
+                            //         shift_measure = shift_measure + shift_inc;
+                            //     end else begin
+                            //         shift_measure = shift_measure - shift_inc;
+                            //     end
+                            // end
                             // Write tdata to R_reg
                             R_reg <= s_axis_tdata;
                             next_byte = last_valid_byte + 1;
-                            count_message((last_valid_byte + 1) * 8);
+                            count_message(({58'b0,last_valid_byte} + 1) * 8);
                             if(next_byte == 0) begin    // If there weren't any null bytes in the last frame
                                 reg_status <= reg_status_actual | 2'b01;
                                 reg_count <= ~reg_count;
@@ -308,15 +390,15 @@ always @(posedge axi_aclk) begin
 
             PAD: begin
                 if(~reg_status_actual[0])begin   // If R_reg is not completed or if it will be propagated at the next clock edge, then we can carry on with padding
-                    pad = 8'h80 << (8 * next_byte);
+                    pad = 512'h80 << (8 * next_byte);
                     if(complete) begin // If the length fits, then pad with 0s all but the length bytes and assert tlast
                         // If the length doesn't fit in the padding, just pad with 0s the rest and go to next block
                         // Length is written in big-endian format
                         if(sha_type_actual[1]) begin
-                            pad = pad | {big_endian(length_low),big_endian(length_high)} 
+                            pad = pad | {{384{1'b0}},big_endian(length_low),big_endian(length_high)} 
                                             << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * 2);
                         end else begin
-                            pad = pad | big_endian(length_low) << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
+                            pad = pad | {{448{1'b0}},big_endian(length_low)} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
                         end
 
                     end
@@ -335,10 +417,10 @@ always @(posedge axi_aclk) begin
                         // Length is written in big-endian format
                         // I assumed the length will never surprass 2^64-1, which is a reasonable assumption
                         if(sha_type_actual[1]) begin
-                            R_reg <= {big_endian(length_low),big_endian(length_high)}  
+                            R_reg <= {{384{1'b0}},big_endian(length_low),big_endian(length_high)}  
                                             << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * 2);
                         end else begin
-                            R_reg <= big_endian(length_low) << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
+                            R_reg <= {{448{1'b0}},big_endian(length_low)} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
                         end
                         reg_count <= ~reg_count;
                     end

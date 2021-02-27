@@ -15,7 +15,9 @@ from cocotb.regression import TestFactory
 from cocotb.scoreboard import Scoreboard
 from cocotbext.axis import *
 
+
 from sha_model import Sha
+import hashlib
 
 # Data generators
 with warnings.catch_warnings():
@@ -27,7 +29,7 @@ DATA_BIT_WIDTH = 512
 DATA_BYTE_WIDTH = 64
 PAD_BYTES = 9
 
-class PadderTB(object):
+class HashEngineTB(object):
 
     def __init__(self, dut, sha_type, debug=False):
         dut._log.info("Preparing tb for padder, sha_type={sha_type}")
@@ -66,14 +68,12 @@ class PadderTB(object):
         message = transaction['data']
         self.dut._log.debug(f'Incoming message={message}')
         self.dut._log.debug(f'Length={len(message)}')
-        
-        sha = Sha(self.sha_type)
-        message = sha.padder(message)
-        self.expected_output.append({'data': message,'user':128*'0'})
 
-        while message:
-            self.dut._log.debug("Message block to be received: {}".format(message[0:DATA_BYTE_WIDTH]))
-            message = message[DATA_BYTE_WIDTH:]
+        sha = hashlib.sha256()
+        sha.update(message)
+        digest = sha.digest()    
+
+        self.expected_output.append({'data': digest})
 
 def random_message(min_size=1, max_size=400, npackets=4):
     """random string data of a random length"""
@@ -83,12 +83,12 @@ def random_message(min_size=1, max_size=400, npackets=4):
 
 async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None):
     dut.m_axis_tready <= 0
-    #dut.log.setLevel(logging.DEBUG)
+    dut.log.setLevel(logging.DEBUG)
 
     """ Setup testbench and run a test. """
     clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
     cocotb.fork(clock.start())  # Start the clock
-    tb = PadderTB(dut, sha_type, False) # Debug=False
+    tb = HashEngineTB(dut, sha_type, False) # Debug=False
 
     await tb.reset()
     dut.m_axis_tready <= 1
@@ -100,8 +100,7 @@ async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None)
 
     # Send in the packets
     for transaction in data_in():
-        tb.s_axis.bus.tuser <= BinaryValue("0"*128)
-        await tb.s_axis.send(transaction,tuser=get_bytes(16,random_data()))
+        await tb.s_axis.send(transaction)
 
     # Wait for last transmission
     await RisingEdge(dut.axi_aclk)
