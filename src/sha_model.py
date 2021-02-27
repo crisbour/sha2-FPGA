@@ -119,7 +119,7 @@ class Sha:
         length_mess = struct.pack('!Q', length) #length.to_bytes(8, 'big')
         self.message = message = message + length_mess
         # assert len(message)%(64+64*(self.type>>1) == 0, 'Message not padded correctly'
-        return message
+        return bytes(message)
 
     def wt_transaction(self, message=None):
 

@@ -32,8 +32,6 @@ class PadderTB(object):
     def __init__(self, dut, sha_type, debug=False):
         dut._log.info("Preparing tb for padder, sha_type={sha_type}")
         self.dut = dut
-        self.dut.sha_type <= sha_type
-        self.dut.en <= 1
         self.sha_type = sha_type    # sha_type_actual
         self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk)
         self.backpressure = BitDriver(dut.m_axis_tready, dut.axi_aclk)
@@ -69,7 +67,7 @@ class PadderTB(object):
         
         sha = Sha(self.sha_type)
         message = sha.padder(message)
-        self.expected_output.append({'data': message})
+        self.expected_output.append({'data': message,'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
 
         while message:
             self.dut._log.debug("Message block to be received: {}".format(message[0:DATA_BYTE_WIDTH]))
@@ -100,7 +98,8 @@ async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None)
 
     # Send in the packets
     for transaction in data_in():
-        await tb.s_axis.send(transaction)
+        tb.s_axis.bus.tuser <= BinaryValue(94*'0'+"{0:02b}".format(sha_type)+32*'0')
+        await tb.s_axis.send(transaction,tuser=get_bytes(16,random_data()))
 
     # Wait for last transmission
     await RisingEdge(dut.axi_aclk)

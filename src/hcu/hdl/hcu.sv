@@ -24,31 +24,37 @@ module hcu
 #(
     // AXI Strem Data Width
     parameter S_AXIS_DATA_WIDTH=64,
-    parameter M_AXIS_DATA_WIDTH=512
+    parameter M_AXIS_DATA_WIDTH=512,
+    parameter M_AXIS_TUSER_WIDTH=128,
+    parameter S_AXIS_TUSER_WIDTH=128
 )
 (
     // Global Ports
     input axi_aclk,
     input axi_resetn,
 
-    // Control
-    input [1:0] sha_type,  // msb is 0 if SHA224/256 and 1 if SHA384/512
-    input en,   // 1 if the hashing engine has been enabled by the scheduler
-
     /*** Slave Steam Port ***/
     // Incomig words
     input [(S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+    input [(S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
     input s_axis_tvalid,
     output reg s_axis_tready,
     input s_axis_tlast,
 
     // Message digest
     output [(M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
+    output [(M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
     output reg m_axis_tvalid,
     input m_axis_tready,
     output reg m_axis_tlast
 
 );
+
+// ----- TUSER specs for identify sha_type ----
+localparam TUESR_SLOT_OFFSET = 32;
+localparam TUSER_SLOT_WIDTH = 16;
+localparam HASH_TUSER_SLOT = 0;
+localparam SHA_TUSER_OFFSET = 0;
 
 localparam [63:0] Kt [0:79]= '{
         64'h428a2f98d728ae22, 64'h7137449123ef65cd, 64'hb5c0fbcfec4d3b2f, 64'he9b5dba58189dbbc,
@@ -84,16 +90,23 @@ wire [REG_LENGTH-1 : 0] A_new, E_new, T1, T2, sig_ch_sum, wt_kt_sum, wt_kt_h_sum
 
 // Status registers and wires
 reg [6:0] word_count;
-reg [1:0] sha_type_reg;
 wire reset;
 assign reset = ~axi_resetn;
+
+wire [1:0] sha_type;
+assign sha_type = (s_axis_tvalid & state==RESET) ? 
+                s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1 :
+                        TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET] 
+                : m_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
+                        TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET];
+
 
 // Computation blocks
 wire [REG_LENGTH-1 : 0] sigma0, sigma0_32, sigma0_64;
 wire [REG_LENGTH-1 : 0] sigma1, sigma1_32, sigma1_64;
 wire [REG_LENGTH-1 : 0] maj, ch;
-assign sigma0 = sha_type_actual[1] ? sigma0_64 : sigma0_32;
-assign sigma1 = sha_type_actual[1] ? sigma1_64 : sigma1_32;
+assign sigma0 = sha_type[1] ? sigma0_64 : sigma0_32;
+assign sigma1 = sha_type[1] ? sigma1_64 : sigma1_32;
 
 // Auxiliary variables
 integer i;
@@ -102,6 +115,7 @@ integer i;
 wire [63:0] H [0:7];
 wire reset_hash, update_hash;
 reg finish;
+
 assign m_axis_tdata = {H[0],H[1],H[2],H[3],H[4],H[5],H[6],H[7]}; //{Reg[0],Reg[1],Reg[2],Reg[3],Reg[4],Reg[5],Reg[6],Reg[7]};  
 /* sha_type_reg[1] ?
             {H[0],H[1],H[2],H[3],H[4],H[5],H[6],H[7]} : 
@@ -111,8 +125,6 @@ assign m_axis_tdata = {H[0],H[1],H[2],H[3],H[4],H[5],H[6],H[7]}; //{Reg[0],Reg[1
             */
 assign reset_hash = (state == RESET);
 assign update_hash = (state == UPDATE_HASH);
-wire [1:0] sha_type_actual;
-assign sha_type_actual = (state == RESET)? sha_type : sha_type_reg;
 
 
 
@@ -149,7 +161,7 @@ always @(*) begin
     case(state)
         RESET: begin
             m_axis_tvalid_next = 0;
-            if(en)
+            if(s_axis_tvalid)
                 state_next = UPDATE_REG;
         end
         UPDATE_REG: begin
@@ -157,12 +169,9 @@ always @(*) begin
             s_axis_tready_next = 1;
         end
         FEED: begin
-            if (sha_type_actual != sha_type)begin
-                state_next = RESET;
-            end
-            else if(s_axis_tvalid) begin
-                if((sha_type_actual[1] && word_count==`BLOCK1024_WORDS-1) ||
-                    (!sha_type_actual[1] && word_count==`BLOCK512_WORDS-1)) begin
+            if(s_axis_tvalid) begin
+                if((sha_type[1] && word_count==`BLOCK1024_WORDS-1) ||
+                    (!sha_type[1] && word_count==`BLOCK512_WORDS-1)) begin
                         state_next = UPDATE_HASH;
                         s_axis_tready_next = 0;
                     end
@@ -204,7 +213,7 @@ always @(posedge axi_aclk) begin
         case(state)
             RESET: begin
                 reset_task();
-                sha_type_reg <= sha_type;
+                m_axis_tuser <= s_axis_tuser;
             end
 
             UPDATE_REG: begin
@@ -244,14 +253,14 @@ end
 // Ks =[2,13,22], [28,34,39]
 Sigma #(.p1(2), .p2(13), .p3(22))
 Sigma0_32 (
-    .data_width_flag(sha_type_actual[1]),
+    .data_width_flag(sha_type[1]),
     .data_value(Reg[0]),
     .sigma_value(sigma0_32)
 );
 // Gs = [6,11,25], [14,18,41]
 Sigma #(.p1(6), .p2(11), .p3(25))
 Sigma1_32 (
-    .data_width_flag(sha_type_actual[1]),
+    .data_width_flag(sha_type[1]),
     .data_value(Reg[4]),
     .sigma_value(sigma1_32)
 );
@@ -259,14 +268,14 @@ Sigma1_32 (
 // Ks =[2,13,22], [28,34,39]
 Sigma #(.p1(28), .p2(34), .p3(39))
 Sigma0_64 (
-    .data_width_flag(sha_type_actual[1]),
+    .data_width_flag(sha_type[1]),
     .data_value(Reg[0]),
     .sigma_value(sigma0_64)
 );
 // Gs = [6,11,25], [14,18,41]
 Sigma #(.p1(14), .p2(18), .p3(41))
 Sigma1_64 (
-    .data_width_flag(sha_type_actual[1]),
+    .data_width_flag(sha_type[1]),
     .data_value(Reg[4]),
     .sigma_value(sigma1_64)
 );
@@ -290,7 +299,7 @@ hash_update per_block(
     .clk(axi_aclk),
     .reset(reset_hash),
 
-    .sha_type(sha_type_actual),
+    .sha_type(sha_type),
     .update(update_hash),
 
     .AH(Reg),
@@ -302,44 +311,44 @@ madd_Kt wt_kt(
     .a(s_axis_tdata),
     .kt(Kt[word_count]),
     .s(wt_kt_sum),
-    .mode64(sha_type_actual[1])
+    .mode64(sha_type[1])
 );
 
 madd_32_64 wt_kt_h(
     .a(wt_kt_sum),
     .b(Reg[7]),
     .s(wt_kt_h_sum),
-    .mode64(sha_type_actual[1])
+    .mode64(sha_type[1])
 );
 madd_32_64 Sig_Ch(
     .a(sigma1),
     .b(ch),
     .s(sig_ch_sum),
-    .mode64(sha_type_actual[1])
+    .mode64(sha_type[1])
 );
 madd_32_64 T1_sum(
     .a(sig_ch_sum),
     .b(wt_kt_h_sum),
     .s(T1),
-    .mode64(sha_type_actual[1])
+    .mode64(sha_type[1])
 );
 madd_32_64 Sig_Maj(
     .a(sigma0),
     .b(maj),
     .s(T2),
-    .mode64(sha_type_actual[1])
+    .mode64(sha_type[1])
 );
 madd_32_64 A_sum(
     .a(T1),
     .b(T2),
     .s(A_new),
-    .mode64(sha_type_actual[1])
+    .mode64(sha_type[1])
 );
 madd_32_64 E_sum(
     .a(Reg[3]),
     .b(T1),
     .s(E_new),
-    .mode64(sha_type_actual[1])
+    .mode64(sha_type[1])
 );
 
 

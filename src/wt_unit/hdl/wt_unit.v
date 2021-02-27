@@ -26,29 +26,34 @@ module wt_unit
     // AXI Stream Data Width
     parameter WT_M_AXIS_DATA_WIDTH=64,
     parameter WT_S_AXIS_DATA_WIDTH=512,
-    parameter DATA_BLOCK_REG_WIDTH=512
+    parameter DATA_BLOCK_REG_WIDTH=512,
+    parameter M_AXIS_TUSER_WIDTH=128,
+    parameter S_AXIS_TUSER_WIDTH=128
 )
 (
     // Global Ports
     input axi_aclk,
     input axi_resetn,
 
-    // Control
-    input [1:0] sha_type,  // msb is 0 if SHA224/256 and 1 if SHA384/512
-    input en,   // 1 if the hashing engine has been enabled by the scheduler
-
     // Master Stream Port
     output [(WT_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
+    output reg [(M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
     output reg m_axis_tvalid,
     input m_axis_tready,
     output reg m_axis_tlast,
 
     // Slave Stream Port
     input [(WT_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+    input [(S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
     input s_axis_tvalid,
     output reg s_axis_tready,
     input s_axis_tlast
 );
+// ----- TUSER specs for identify sha_type ----
+localparam TUESR_SLOT_OFFSET = 32;
+localparam TUSER_SLOT_WIDTH = 16;
+localparam HASH_TUSER_SLOT = 0;
+localparam SHA_TUSER_OFFSET = 0;
 
 // Internal Parameters
 localparam REG_WT_R_LENGTH = 32;
@@ -68,18 +73,16 @@ wire reset;
 wire load_reg;
 wire hcu_read;
 reg finish;
-reg wait_eof;
-reg [1:0] sha_type_reg;
+wire [1:0] sha_type;
 reg [6:0] loopbacks;
-reg step_count;
 
-// Initial assignments
-initial begin
-    reset_task();
-end
+assign sha_type = (s_axis_tvalid & state==IDLE) ? s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
+                                TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET] 
+                        : m_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
+                                TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET];
 
 
-assign hcu_read = m_axis_tready & m_axis_tvalid; // & (~sha_type_reg[1] | step_count);
+assign hcu_read = m_axis_tready & m_axis_tvalid;
 assign load_reg = s_axis_tready & s_axis_tvalid;
 assign reset = ~axi_resetn;
 
@@ -87,25 +90,11 @@ assign reset = ~axi_resetn;
 integer i;
 integer b;
 
-// ---------- Reset State: Task -------
-task reset_task();
-begin
-    state = IDLE;
-
-    m_axis_tlast = 0;
-    m_axis_tvalid = 0;
+initial begin
     s_axis_tready = 0;
-
-    wait_eof = 0;
-    finish = 0;
-    loopbacks = 0;
-    step_count = 0;
-
-    for(i=0;i<16;i=i+1) begin // Clear the registers
-                    Reg[i] = 0;
-    end
+    m_axis_tvalid = 0;
+    m_axis_tuser = 0;
 end
-endtask
 
 // ---------- Function Sigma ----------
 function [REG_WT_LR_LENGTH-1 : 0] sigma;
@@ -157,24 +146,24 @@ endfunction
 // ---------- FSM --------------
 //FSM registers
 reg [2:0] state, state_next;
-reg s_axis_tready_next, m_axis_tvalid_next;
+reg s_axis_tready_next, m_axis_tvalid_next, m_axis_tlast_next;
 localparam IDLE = 0;
 localparam BLOCK512 = 1;
 localparam BLOCK1024_L = 2;
 localparam BLOCK1024_R = 3;
 localparam TRANSF512 = 4;
 localparam TRANSF1024 = 5;
-localparam WAIT = 6;
 
 // FSM transitions
 always @(*) begin 
     state_next = state;
     s_axis_tready_next = s_axis_tready;
     m_axis_tvalid_next = m_axis_tvalid;
+    m_axis_tlast_next = 0;
     case(state)
         IDLE: begin
             m_axis_tvalid_next = 0;
-            if(en) begin
+            if(s_axis_tvalid) begin
                 s_axis_tready_next = 1;
                 if(sha_type[1]) state_next = BLOCK1024_L;
                 else state_next = BLOCK512;
@@ -219,13 +208,6 @@ always @(*) begin
                 end
             end
         end
-        WAIT: begin
-            if(~wait_eof | hcu_read) begin
-                m_axis_tvalid_next = 0;
-                s_axis_tready_next = 0;
-                state_next = IDLE;
-            end
-        end
     endcase
 end
 
@@ -233,7 +215,7 @@ end
 always @(posedge axi_aclk)
 begin: FSM_SEQ
     if(reset) begin
-        reset_task();
+        // reset_task();
     end else begin
         state <= state_next;
         s_axis_tready <= s_axis_tready_next;
@@ -243,32 +225,46 @@ end
 
 always @(posedge axi_aclk) begin
     if(reset) begin
-        reset_task();
+        state <= IDLE;
+
+        m_axis_tlast <= 0;
+        m_axis_tvalid <= 0;
+        s_axis_tready <= 0;
+        m_axis_tuser <= 0;
+
+        finish <= 0;
+        loopbacks <= 0;
+
+        for(i=0;i<16;i=i+1) begin // Clear the registers
+                        Reg[i] <= 0;
+        end
     end 
     else begin
         case(state)
             IDLE: begin
-                reset_task();
-                if(en)  sha_type_reg <= sha_type;
+                m_axis_tlast <= 0;
+                m_axis_tuser <= s_axis_tuser;
+
+                finish <= 0;
+                loopbacks <= 0;
+
+                for(i=0;i<16;i=i+1) begin // Clear the registers
+                                Reg[i] <= 0;
+                end
             end
 
             BLOCK512: begin
                 if(load_reg & ~finish) begin
-                    for(i=0;i<16;i=i+1) begin
-                        b = 32 * i;
-                        // Change order of bytes such that msb in Message is msb in Reg
-                        Reg[i][31:24]   <= 8'hff & (s_axis_tdata>>b);
-                        Reg[i][23:16]   <= 8'hff & (s_axis_tdata>>(b+8));
-                        Reg[i][15:8]    <= 8'hff & (s_axis_tdata>>(b+16));
-                        Reg[i][7:0]     <= 8'hff & (s_axis_tdata>>(b+24));
-                    end
                     if(s_axis_tlast)    finish <= 1;    // End of message
                 end
             end
 
             TRANSF512: begin
                 if(hcu_read & loopbacks == `BLOCK512_STEPS-1)
+                begin
                     loopbacks <= 0;
+                    m_axis_tlast <= 0; 
+                end
                 if(hcu_read && loopbacks<`BLOCK512_STEPS-1) begin
                     if(loopbacks == `BLOCK512_STEPS-2 & finish) 
                          m_axis_tlast <= 1; //Next available tdata is the last chunck "Wt" for this Message
@@ -278,52 +274,56 @@ always @(posedge axi_aclk) begin
                         Reg[i] <= Reg[i+1];
                     end
                     // This modulo addition should be replaced with two CSAs and one CPA with widths matched
+                    /* verilator lint_off WIDTH */
                     Reg[15][REG_WT_LR_LENGTH-1:0] <= 32'hFFFFFFFF &
                             (  Reg[0][REG_WT_R_LENGTH-1:0]
-                             + sigma(Reg[1][REG_WT_R_LENGTH-1:0],sha_type_reg,0)
+                             + sigma(Reg[1][REG_WT_R_LENGTH-1:0],sha_type,0)
                              + Reg[9][REG_WT_R_LENGTH-1:0]
-                             + sigma(Reg[14][REG_WT_R_LENGTH-1:0],sha_type_reg,1));  
+                             + sigma(Reg[14][REG_WT_R_LENGTH-1:0],sha_type,1));
+                    /* verilator lint_on WIDTH */  
                 end
             end
 
-            BLOCK1024_L: begin
-                if(load_reg & ~finish) begin
-                    for(i=0;i<8;i=i+1) begin
-                        b = 64 * i;
-                        // Change order of bytes such that msb in Message is msb in Reg
-                        Reg[i][63:56]   <= 8'hff & (s_axis_tdata>>b);
-                        Reg[i][55:48]   <= 8'hff & (s_axis_tdata>>(b+8));
-                        Reg[i][47:40]   <= 8'hff & (s_axis_tdata>>(b+16));
-                        Reg[i][39:32]   <= 8'hff & (s_axis_tdata>>(b+24));
-                        Reg[i][31:24]   <= 8'hff & (s_axis_tdata>>(b+32));
-                        Reg[i][23:16]   <= 8'hff & (s_axis_tdata>>(b+40));
-                        Reg[i][15:8]    <= 8'hff & (s_axis_tdata>>(b+48));
-                        Reg[i][7:0]     <= 8'hff & (s_axis_tdata>>(b+56));
-                    end
-                end
-            end
+            // BLOCK1024_L: begin
+            //     if(load_reg & ~finish) begin
+            //         for(i=0;i<8;i=i+1) begin
+            //             b = 64 * i;
+            //             // Change order of bytes such that msb in Message is msb in Reg
+            //             Reg[i][63:56]   <= 8'hff & (s_axis_tdata>>b);
+            //             Reg[i][55:48]   <= 8'hff & (s_axis_tdata>>(b+8));
+            //             Reg[i][47:40]   <= 8'hff & (s_axis_tdata>>(b+16));
+            //             Reg[i][39:32]   <= 8'hff & (s_axis_tdata>>(b+24));
+            //             Reg[i][31:24]   <= 8'hff & (s_axis_tdata>>(b+32));
+            //             Reg[i][23:16]   <= 8'hff & (s_axis_tdata>>(b+40));
+            //             Reg[i][15:8]    <= 8'hff & (s_axis_tdata>>(b+48));
+            //             Reg[i][7:0]     <= 8'hff & (s_axis_tdata>>(b+56));
+            //         end
+            //     end
+            // end
 
             BLOCK1024_R: begin
                 if(load_reg & ~finish) begin
-                    for(i=0;i<8;i=i+1) begin
-                        b = 64 * i;
-                        // Change order of bytes such that msb in Message is msb in Reg
-                        Reg[i+8][63:56]   <= 8'hff & (s_axis_tdata>>b);
-                        Reg[i+8][55:48]   <= 8'hff & (s_axis_tdata>>(b+8));
-                        Reg[i+8][47:40]   <= 8'hff & (s_axis_tdata>>(b+16));
-                        Reg[i+8][39:32]   <= 8'hff & (s_axis_tdata>>(b+24));
-                        Reg[i+8][31:24]   <= 8'hff & (s_axis_tdata>>(b+32));
-                        Reg[i+8][23:16]   <= 8'hff & (s_axis_tdata>>(b+40));
-                        Reg[i+8][15:8]    <= 8'hff & (s_axis_tdata>>(b+48));
-                        Reg[i+8][7:0]     <= 8'hff & (s_axis_tdata>>(b+56));
-                    end
+                    // for(i=0;i<8;i=i+1) begin
+                    //     b = 64 * i;
+                    //     // Change order of bytes such that msb in Message is msb in Reg
+                    //     Reg[i+8][63:56]   <= 8'hff & (s_axis_tdata>>b);
+                    //     Reg[i+8][55:48]   <= 8'hff & (s_axis_tdata>>(b+8));
+                    //     Reg[i+8][47:40]   <= 8'hff & (s_axis_tdata>>(b+16));
+                    //     Reg[i+8][39:32]   <= 8'hff & (s_axis_tdata>>(b+24));
+                    //     Reg[i+8][31:24]   <= 8'hff & (s_axis_tdata>>(b+32));
+                    //     Reg[i+8][23:16]   <= 8'hff & (s_axis_tdata>>(b+40));
+                    //     Reg[i+8][15:8]    <= 8'hff & (s_axis_tdata>>(b+48));
+                    //     Reg[i+8][7:0]     <= 8'hff & (s_axis_tdata>>(b+56));
+                    // end
                     if(s_axis_tlast)    finish <= 1;    // End of message
                 end
             end
 
             TRANSF1024 : begin
-                if(hcu_read & loopbacks == `BLOCK1024_STEPS-1)
+                if(hcu_read & loopbacks == `BLOCK1024_STEPS-1) begin
                     loopbacks <= 0;
+                    m_axis_tlast <= 0;
+                end
                 if(hcu_read && loopbacks<`BLOCK1024_STEPS-1) begin
                     if(loopbacks == `BLOCK1024_STEPS-2 & finish) 
                          m_axis_tlast <= 1; //Next available tdata is the last chunck "Wt" for this Message
@@ -334,29 +334,50 @@ always @(posedge axi_aclk) begin
                     end
                     // This modulo addition should be replaced with two CSAs and one CPA with widths matched
                     Reg[15] <= Reg[0]
-                             + sigma(Reg[1],sha_type_reg,0)
+                             + sigma(Reg[1],sha_type,0)
                              + Reg[9]
-                             + sigma(Reg[14],sha_type_reg,1);  
+                             + sigma(Reg[14],sha_type,1);  
                 end
             end
         endcase // state
     end
 end
 
-// `ifdef COCOTB_SIM
-// `ifndef VERILATOR // traced differently
-// initial begin
-//   $dumpfile ("waveform.vcd");
-//   $dumpvars (0, wt_unit);
-//   #1;
-// end
-// `endif
-// `endif
+genvar indx,by;
+generate
+    for(by=0;by<4;by=by+1)
+        for(indx=0;indx<16;indx=indx+1)
+            always @(posedge axi_aclk) begin
+                if(state==BLOCK512 & ~reset & load_reg & ~finish) begin
+                    // Change order of bytes such that msb in Message is msb in Reg
+                    Reg[indx][8*by+7:8*by]     <= s_axis_tdata[32*indx+(31-8*by):32*indx+(24-8*by)];
+                end
+            end
+endgenerate
 
+generate
+    for(by=0;by<8;by=by+1)
+        for(indx=0;indx<8;indx=indx+1)
+            always @(posedge axi_aclk)begin
+                if(state==BLOCK1024_L & ~reset & load_reg & ~finish)begin
+                    // Change order of bytes such that msb in Message is msb in Reg
+                    Reg[indx][8*by+7:8*by]   <= s_axis_tdata[64*indx+(63-8*by):64*indx+(56-8*by)];
+                end
+                if(state==BLOCK1024_R & ~reset & load_reg & ~finish)begin
+                    // Change order of bytes such that msb in Message is msb in Reg
+                    Reg[indx+8][8*by+7:8*by]   <= s_axis_tdata[64*indx+(63-8*by):64*indx+(56-8*by)];
+                end
+            end
+endgenerate
+
+`ifdef COCOTB_SIM
+`ifndef VERILATOR // traced differently
 initial begin
   $dumpfile ("dump.vcd");
-  $dumpvars (0, wt_unit);
+  $dumpvars (0,wt_unit);
   #1;
 end
+`endif
+`endif
 
 endmodule

@@ -8,6 +8,12 @@ export PYTHONPATH := $(TOPDIR)/../:$(PYTHONPATH)
 
 SIM ?= icarus
 
+ifeq ($(SIM), verilator)
+EXTRA_ARGS += --trace --trace-structs
+#EXTRA_ARGS += -Wno-WIDTH
+#EXTRA_ARGS += --trace-fst --trace-structs -CFLAGS -DVM_TRACE_FST=1
+endif
+
 #not sure if only icarus include is by -I ...
 ifeq ($(SIM),icarus)
 COMPILE_ARGS+=-I$(TOPDIR)/hdl/

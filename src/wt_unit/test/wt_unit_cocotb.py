@@ -14,6 +14,7 @@ from cocotb.result import ReturnValue
 from cocotb.regression import TestFactory
 from cocotb.scoreboard import Scoreboard
 from cocotbext.axis import AXIS_Driver, AXIS_Monitor
+from cocotb.binary import BinaryValue
 
 from collections import deque
 
@@ -33,7 +34,6 @@ class WtUnitTB(object):
 
     def __init__(self, dut, sha_type, debug=False):
         self.dut = dut
-        self.dut.sha_type <= sha_type	# Set it to SHA224/256
         self.sha_type = sha_type
         self.dut._log.info(f'Creating testbench with sha_type={Sha.resolve_name(sha_type)}')
 
@@ -72,7 +72,7 @@ class WtUnitTB(object):
         message = transaction['data']
         sha = Sha(self.sha_type)
         buffer = sha.wt_transaction(message=message)
-        self.expected_output.append({'data': buffer})
+        self.expected_output.append({'data': buffer, 'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
 
 def random_message(sha_type ,min_blocks=1, max_blocks=4, npackets=4):
     """random string data of a random length"""
@@ -88,9 +88,8 @@ def random_message(sha_type ,min_blocks=1, max_blocks=4, npackets=4):
 
 
 async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None):
-    dut.m_axis_tready <= 0
-    dut.en <= 1
     #dut._log.setLevel(logging.DEBUG)
+    dut.m_axis_tready <= 0;
 
     """ Setup testbench and run a test. """
     clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
@@ -99,13 +98,14 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
 
     await tb.reset()
 
-    dut.m_axis_tready <= 1
+    dut.m_axis_tready <= 1;
     
     if backpressure_inserter is not None:
         tb.backpressure.start(backpressure_inserter())
 
     # Send in the packets
     for transaction in data_in(sha_type):
+        tb.s_axis.bus.tuser <= BinaryValue(94*'0'+"{0:02b}".format(sha_type)+32*'0')
         await tb.s_axis.send(transaction)
 
     # Wait for last transmission
