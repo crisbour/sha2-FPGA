@@ -32,10 +32,6 @@ module hash_engine
     input axi_aclk,
     input axi_resetn,
 
-    // Control
-    input [1:0] sha_type,  // msb is 0 if SHA224/256 and 1 if SHA384/512
-    input en,   // 1 if the hashing engine has been enabled by the scheduler
-
     /*** Slave Steam Port ***/
     // Incomig words
     input [(S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
@@ -69,8 +65,6 @@ padder Padder(
     // Global signals
     .axi_aclk(axi_aclk),
     .axi_resetn(axi_resetn),
-    .sha_type(sha_type),
-    .en(en),
     // Input message
     .s_axis_tdata(s_axis_tdata),
     .s_axis_tuser(s_axis_tuser),
@@ -90,8 +84,6 @@ wt_unit Wt(
     // Global signals
     .axi_aclk(axi_aclk),
     .axi_resetn(axi_resetn),
-    .sha_type(sha_type),
-    .en(en),
     // Input padded message blocks
     .s_axis_tdata(padded_axis_tdata),
     .s_axis_tuser(padded_axis_tuser),
@@ -110,8 +102,6 @@ hcu HashingComputationUnit(
     // Global signals
     .axi_aclk(axi_aclk),
     .axi_resetn(axi_resetn),
-    .sha_type(sha_type),
-    .en(en),
     // Input words
     .s_axis_tdata(wt_axis_tdata),
     .s_axis_tuser(wt_axis_tuser),
@@ -130,8 +120,6 @@ digest Digest(
     // Global signals
     .axi_aclk(axi_aclk),
     .axi_resetn(axi_resetn),
-    .sha_type(sha_type),
-    .en(en),
     // Input unparsed hash
     .s_axis_tdata(hcu_axis_tdata),
     .s_axis_tuser(hcu_axis_tuser),

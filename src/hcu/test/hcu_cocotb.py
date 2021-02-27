@@ -34,7 +34,6 @@ class HcuTb(object):
     def __init__(self, dut, sha_type, debug=False):
         dut._log.info(f"Setting up test bench objct with sha_type={sha_type}")
         self.dut = dut
-        self.dut.sha_type <= sha_type
         self.sha_type = sha_type
 
         self.dut._log.info("Configure driver, monitors and scoreboard")
@@ -84,7 +83,7 @@ class HcuTb(object):
             message = message[BYTE_WIDTH_WORDS*words_block:]
         
         print(f'Hash Computed = {[hex(reg) for  reg in sha.get_hash()]}')
-        self.expected_output.append({'data': sha.get_bytes_hash()})
+        self.expected_output.append({'data': sha.get_bytes_hash(), 'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
 
 def random_wt(sha_type) -> Iterator[int]:
     wt_empty_bytes = BYTE_WIDTH_WORDS - Sha.word_bytes(sha_type)
@@ -112,7 +111,6 @@ async def run_test(dut, sha_type=None, backpressure_inserter=None):
     dut._log.info(f"Init testbench with sha_type={sha_type}")
 
     dut.m_axis_tready <= 0
-    dut.en <= 1
     #dut._log.setLevel(logging.DEBUG)
     """ Setup testbench and run a test. """
     clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
@@ -129,6 +127,7 @@ async def run_test(dut, sha_type=None, backpressure_inserter=None):
     dut._log.info('Send Wt parsed from message')
     # Send in the packets
     for transaction in format_wt(sha_type=sha_type):
+        tb.s_axis.bus.tuser <= BinaryValue(94*'0'+"{0:02b}".format(sha_type)+32*'0')
         #transaction = format_wt_message(transaction, sha_type=sha_type)
         await tb.s_axis.send(transaction)
 

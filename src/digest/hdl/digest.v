@@ -33,10 +33,6 @@ module digest
     input axi_aclk,
     input axi_resetn,
 
-    // Control
-    input [1:0] sha_type,  // msb is 0 if SHA224/256 and 1 if SHA384/512
-    input en,   // 1 if the hashing engine has been enabled by the scheduler
-
     /*** Slave Steam Port ***/
     // Incomig words
     input [(S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
@@ -54,7 +50,13 @@ module digest
     output reg m_axis_tlast
 
 );
+// ----- TUSER specs for identify sha_type ----
+localparam TUESR_SLOT_OFFSET = 32;
+localparam TUSER_SLOT_WIDTH = 16;
+localparam HASH_TUSER_SLOT = 0;
+localparam SHA_TUSER_OFFSET = 0;
 
+// DATA
 localparam AXIS_DATA_BYTES = M_AXIS_DATA_WIDTH/8;
 localparam REG_WIDTH = 64;
 localparam WORD_WIDTH = 32;
@@ -70,6 +72,9 @@ assign reset = ~axi_resetn;
 wire [M_AXIS_DATA_WIDTH - 1 : 0] hash256;
 wire [M_AXIS_DATA_WIDTH - 1 : 0] hash512;
 
+wire [1:0] sha_type;
+assign sha_type = s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
+                                TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET];
 
 // ---------- Reset State: Task -------
 task reset_task();
@@ -105,6 +110,8 @@ always @(posedge axi_aclk) begin
                 m_axis_tvalid <= 1;
                 m_axis_tlast <= 1;
                 s_axis_tready <= 0;
+                
+                m_axis_tuser <= s_axis_tuser;
                 if(~sha_type[1])     // sha224/256 needs only 512 bit for hash
                     m_axis_tdata <= hash256;
                 else

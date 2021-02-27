@@ -33,7 +33,6 @@ class DigestTB(object):
 
     def __init__(self, dut, sha_type, debug=False):
         self.dut = dut
-        self.dut.sha_type <= sha_type
         self.sha_type = sha_type	# Set it to SHA224/256
         
         self.dut._log.info("Configure driver, monitors and scoreboard")
@@ -70,7 +69,7 @@ class DigestTB(object):
         print(message)
         sha=Sha(self.sha_type)
         digest = sha.digest(message)
-        self.expected_output.append({'data': digest})
+        self.expected_output.append({'data': digest,'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
         #print(f'Expected digest = {digest}')
         #self.dut._log.debug("Message block received: {}".format(buffer[0:DATA_BYTE_WIDTH]))
 
@@ -87,7 +86,7 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
     """ Setup testbench and run a test. """
     clock = Clock(dut.axi_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
     cocotb.fork(clock.start())  # Start the clock
-    tb = DigestTB(dut, True)
+    tb = DigestTB(dut, sha_type, True)
 
     await tb.reset()
     dut.m_axis_tready <= 1
@@ -97,6 +96,7 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
 
     # Send in the packets
     for transaction in data_in():
+        tb.s_axis.bus.tuser <= BinaryValue(94*'0'+"{0:02b}".format(sha_type)+32*'0')
         await tb.s_axis.send(transaction)
 
     # Wait for last transmission

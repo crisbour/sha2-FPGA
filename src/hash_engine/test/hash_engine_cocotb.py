@@ -34,8 +34,6 @@ class HashEngineTB(object):
     def __init__(self, dut, sha_type, debug=False):
         dut._log.info("Preparing tb for padder, sha_type={sha_type}")
         self.dut = dut
-        self.dut.sha_type <= sha_type
-        self.dut.en <= 1
         self.sha_type = sha_type    # sha_type_actual
         self.s_axis = AXIS_Driver(dut, "s_axis", dut.axi_aclk)
         self.backpressure = BitDriver(dut.m_axis_tready, dut.axi_aclk)
@@ -73,7 +71,7 @@ class HashEngineTB(object):
         sha.update(message)
         digest = sha.digest()    
 
-        self.expected_output.append({'data': digest})
+        self.expected_output.append({'data': digest,'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
 
 def random_message(min_size=1, max_size=400, npackets=4):
     """random string data of a random length"""
@@ -100,6 +98,7 @@ async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None)
 
     # Send in the packets
     for transaction in data_in():
+        tb.s_axis.bus.tuser <= BinaryValue(94*'0'+"{0:02b}".format(sha_type)+32*'0')
         await tb.s_axis.send(transaction)
 
     # Wait for last transmission

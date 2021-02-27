@@ -22,7 +22,7 @@ COMPILE_ARGS+=+incdir+$(TOPDIR)/hdl/
 endif
 
 # DUT
-VERILOG_SOURCES = $(PWD)/../hdl/wt_unit.sv
+VERILOG_SOURCES = $(PWD)/../hdl/wt_unit.v
 TOPLEVEL = wt_unit
 
 export TOPLEVEL_LANG
