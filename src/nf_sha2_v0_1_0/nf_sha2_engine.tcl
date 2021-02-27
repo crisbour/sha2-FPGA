@@ -5,7 +5,7 @@ set design nf_sha2_engine
 set top hash_engine
 set device $::env(DEVICE)
 set proj_dir ./ip_proj
-set ip_version 1.00
+set ip_version 0.10
 set lib_name NetFPGA
 
 #####################################
