@@ -127,17 +127,18 @@ assign reset_hash = (state == RESET);
 assign update_hash = (state == UPDATE_HASH);
 
 
+initial begin
+    m_axis_tvalid = 0;
+    s_axis_tready = 0;
+end
 
 // ---------- Reset State: Task -------
 task reset_task();
 begin
 
     m_axis_tlast <= 0;
-    m_axis_tvalid <= 0;
-    s_axis_tready <= 0;
-    
-    finish <= 0;
 
+    finish <= 0;
     word_count <= 0;
 
 end
@@ -199,6 +200,8 @@ always @(posedge axis_aclk)
 begin
     if(reset) begin
         state <= RESET;
+        m_axis_tvalid <= 0;
+        s_axis_tready <= 0;
         reset_task();
     end else begin
         state <= state_next;
