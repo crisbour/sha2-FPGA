@@ -30,9 +30,9 @@ class MultihashTB(object):
         self.codec = codec    # sha_type_actual
 
         dut._log.info(f"AXI Stream driver and sink.")
-        self.s_axis = AXIS_Driver(dut, "s_axis", dut.axis_aclk, lsb_first=False)
+        self.s_axis = AXIS_Driver(dut, "s_axis", dut.axis_aclk)
         self.backpressure = BitDriver(dut.m_axis_tready, dut.axis_aclk)
-        self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axis_aclk, lsb_first=False)
+        self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axis_aclk)
 
         self.expected_output = []
         dut._log.info("Setup scoreboard.")
@@ -44,7 +44,7 @@ class MultihashTB(object):
 
         dut._log.info('Reconstruct input transactions')
         # Reconstrut the input transactions
-        self.s_axis_recovered = AXIS_Monitor(dut, "s_axis", dut.axis_aclk, callback=self.model, lsb_first=False)
+        self.s_axis_recovered = AXIS_Monitor(dut, "s_axis", dut.axis_aclk, callback=self.model)
 
         level = logging.DEBUG if debug else logging.WARNING
         self.s_axis.log.setLevel(level)
