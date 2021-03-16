@@ -81,7 +81,7 @@ reg [DATA_BYTES*8-1:0]  buffer_sync;
 reg [DATA_BYTES*8-1:0]  buffer;
 reg [2:0]  buffer_bytes_sync;
 reg [2:0]  buffer_bytes;
-reg [8:0]  empty_bytes;
+reg [8:0]  keep_bytes;
 
 
 wire read_queue = fifo_rd_en & ~fifo_empty & msgs_queued>0;
@@ -134,7 +134,7 @@ genvar by_f;
 generate
     for(by_f=1;by_f<=AXIS_TKEEP_WIDTH;by_f=by_f+1) begin
         always @(*) begin
-            if(fifo_out_tkeep == {{by_f{1'b1}},{(AXIS_TKEEP_WIDTH-by_f){1'b0}}} && read_queue)
+            if(fifo_out_tkeep == {{(AXIS_TKEEP_WIDTH-by_f){1'b0}},{by_f{1'b1}}} && read_queue)
                 fifo_valid_bytes = by_f;
         end
     end
@@ -154,14 +154,15 @@ integer  s,i;
 always @(*) begin
     s=0;
     len_varint = 0;
-    len_bytes = 1;
+    len_bytes = 0;
     for(i=0;i<1;i=i+1)  // Number of iteration = max_bytes_len - 1
         if( (len >> s) >= 8'h80 )begin
-            len_varint = (len_varint << 8) | (8'h80 | ((len>>s) & 8'h7F));
+            len_varint = len_varint | ((8'h80 | ((len>>s) & 8'h7F)) <<(8*i));
             len_bytes = len_bytes + 1;
             s = s+7;
         end
-    len_varint = (len_varint << 8) | ((len>>s) & 8'h7F);
+    len_varint = len_varint | (((len>>s) & 8'h7F)<<(8*len_bytes));
+    len_bytes = len_bytes + 1;
 end
 
 // --------- Varint Codec -----------
@@ -170,7 +171,6 @@ always @(*) begin
         codec_varint = fifo_out_tuser[TUESR_SLOT_OFFSET+TUSER_SLOT_WIDTH*(HASH_TUSER_SLOT+1)-1:TUESR_SLOT_OFFSET+TUSER_SLOT_WIDTH*HASH_TUSER_SLOT];
         if(codec_varint[7]) begin
             codec_bytes = 2;
-            codec_varint = {codec_varint[7:0], codec_varint[15:8]};
         end else begin
             codec_bytes = 1;
         end
@@ -193,25 +193,24 @@ always @(*) begin
             m_axis_tuser[127:32] = {80'h0,`CODEC_MULTIHASH};
 
             // Create header for the stream
-            buffer = { {codec_varint,16'h0} << (8*(2-codec_bytes))
-                | ({16'h0,len_varint} << (8*(4-codec_bytes-len_bytes)))
-                , {(C_AXIS_DATA_WIDTH-32){1'b0}} };
+            buffer = { {(C_AXIS_DATA_WIDTH-32){1'b0}},
+                        {16'h0, codec_varint} | ({len_varint,16'h0} >> (8*(2-codec_bytes)))};
             buffer_bytes = len_bytes + codec_bytes;
 
             m_axis_tvalid = ~fifo_empty & msgs_queued>0;
 
             // Add header to the stream
-            m_axis_tdata = buffer | (fifo_out_tdata >> (8*buffer_bytes));
+            m_axis_tdata = buffer | (fifo_out_tdata << (8*buffer_bytes));
 
             if(DATA_BYTES <= fifo_valid_bytes + buffer_bytes) begin
-                empty_bytes = 0;
+                keep_bytes = DATA_BYTES;
                 m_axis_tlast = 0;
             end
             else begin
-                empty_bytes = (DATA_BYTES - fifo_valid_bytes - buffer_bytes);
+                keep_bytes = fifo_valid_bytes + buffer_bytes;
                 m_axis_tlast = 1;
             end
-            m_axis_tkeep = ~((1 << empty_bytes) - 1);
+            m_axis_tkeep = (1 << keep_bytes) - 1;
 
             if(m_axis_tready & m_axis_tvalid) begin
                 fifo_rd_en = 1;
@@ -230,17 +229,17 @@ always @(*) begin
             m_axis_tvalid = ~fifo_empty;
 
             // Add overflow stream to next stream
-            m_axis_tdata = buffer | (fifo_out_tdata >> (8*buffer_bytes));
+            m_axis_tdata = buffer | (fifo_out_tdata << (8*buffer_bytes));
 
             if(DATA_BYTES <= fifo_valid_bytes + buffer_bytes) begin
-                empty_bytes = 0;
+                keep_bytes = DATA_BYTES;
                 m_axis_tlast = 0;
             end
             else begin
-                empty_bytes = (DATA_BYTES - fifo_valid_bytes - buffer_bytes);
+                keep_bytes = fifo_valid_bytes + buffer_bytes;
                 m_axis_tlast = 1;
             end
-            m_axis_tkeep = ~((1 << (empty_bytes)) - 1);
+            m_axis_tkeep = (1 << keep_bytes) - 1;
 
             if(m_axis_tready & m_axis_tvalid) begin
                 fifo_rd_en = 1;
@@ -261,7 +260,7 @@ always @(*) begin
             // Add overflow stream to the next stream
             m_axis_tdata = buffer;
 
-            m_axis_tkeep = ~((1 << (DATA_BYTES - buffer_bytes)) - 1);
+            m_axis_tkeep = (1 << buffer_bytes) - 1;
 
             if(m_axis_tready & m_axis_tvalid & m_axis_tlast)
                 state_next = ENCAPS;
@@ -276,7 +275,7 @@ always @(posedge axis_aclk) begin
     else begin
         state <= state_next;
         if(transmit) begin
-            buffer_sync <= fifo_out_tdata << (8*(DATA_BYTES - buffer_bytes));
+            buffer_sync <= fifo_out_tdata >> (8*(DATA_BYTES - buffer_bytes));
             buffer_bytes_sync <= fifo_valid_bytes + buffer_bytes - DATA_BYTES;
         end
     end
@@ -292,7 +291,7 @@ genvar by_i;
 generate
     for(by_i=1;by_i<=AXIS_TKEEP_WIDTH;by_i=by_i+1) begin
         always @(*) begin
-            if(s_axis_tkeep == {{by_i{1'b1}},{(AXIS_TKEEP_WIDTH-by_i){1'b0}}})
+            if(s_axis_tkeep == {{(AXIS_TKEEP_WIDTH-by_i){1'b0}},{by_i{1'b1}}})
                 valid_bytes = by_i;
         end
     end
