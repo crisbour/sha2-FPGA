@@ -2,10 +2,11 @@
 TOPLEVEL_LANG = verilog
 
 PWD=$(shell pwd)
-TOPDIR=$(PWD)/../..
-DESIGNDIR=$(PWD)/..
+TOPDIR=$(PWD)/..
+HDIR=$(TOPDIR)/../headers
 
-export PYTHONPATH := $(TOPDIR)/:$(PYTHONPATH)
+
+export PYTHONPATH := $(TOPDIR)/../:$(PYTHONPATH)
 
 SIM ?= verilator
 
@@ -16,16 +17,16 @@ endif
 
 #not sure if only icarus include is by -I ...
 ifeq ($(SIM),icarus)
-COMPILE_ARGS+=-I$(DESIGNDIR)/hdl/
-COMPILE_ARGS+=-I$(TOPDIR)
+COMPILE_ARGS+=-I$(TOPDIR)/hdl/
+COMPILE_ARGS+=-I$(HDIR)
 else
-COMPILE_ARGS+=+incdir+$(DESIGNDIR)/hdl/
-COMPILE_ARGS+=+incdir+$(TOPDIR)
+COMPILE_ARGS+=+incdir+$(TOPDIR)/hdl/
+COMPILE_ARGS+=+incdir+$(HDIR)
 endif
 
 # DUT
-VERILOG_SOURCES = $(DESIGNDIR)/hdl/padder.sv
-VERILOG_SOURCES += $(TOPDIR)/multiformats_codec.vh
+VERILOG_SOURCES = $(TOPDIR)/hdl/padder.sv
+VERILOG_SOURCES += $(HDIR)/multiformats_codec.vh
 TOPLEVEL = padder
 
 export TOPLEVEL_LANG

@@ -2,11 +2,9 @@
 # Copyright (c) 2021 University of Cambridge
 # All rights reserved.
 #
-# This software was developed by Stanford University and the University of Cambridge Computer Laboratory 
-# under National Science Foundation under Grant No. CNS-0855268,
-# the University of Cambridge Computer Laboratory under EPSRC INTERNET Project EP/H040536/1 and
-# by the University of Cambridge Computer Laboratory under DARPA/AFRL contract FA8750-11-C-0249 ("MRC2"), 
-# as part of the DARPA MRC research programme.
+# This software was developed by the University of Cambridge Computer
+# Laboratory under EPSRC EARL Project EP/P025374/1 alongside support
+# from Xilinx Inc.
 #
 # @NETFPGA_LICENSE_HEADER_START@
 #
@@ -46,7 +44,6 @@ set_param synth.elaboration.rodinMoreOptions "rt::set_parameter max_loop_limit 2
 # Design Parameters on NF_DATAPATH
 #####################################
 set datapath_width_bit    512
-set tuser_width_bit       128
 set datapath_freq_mhz     250
 set opl_bcam_size         16
 
@@ -136,19 +133,26 @@ set_property generate_synth_checkpoint false [get_files xilinx_shell_ip.xci]
 reset_target all [get_ips xilinx_shell_ip]
 generate_target all [get_ips xilinx_shell_ip]
 
-create_ip -name nf_axis_converter -vendor NetFPGA -library NetFPGA -module_name nf_axis_converter_s_ip
-set_property CONFIG.C_M_AXIS_DATA_WIDTH 512 [get_ips nf_axis_converter_s_ip]
-set_property CONFIG.C_S_AXIS_DATA_WIDTH ${datapath_width_bit} [get_ips nf_axis_converter_s_ip]
-set_property generate_synth_checkpoint false [get_files nf_axis_converter_s_ip.xci]
-reset_target all [get_ips nf_axis_converter_s_ip]
-generate_target all [get_ips nf_axis_converter_s_ip]
+create_ip -name nf_10g_attachment -vendor NetFPGA -library NetFPGA -module_name nf_10g_attachment_ip
+set_property CONFIG.C_M_AXIS_DATA_WIDTH ${datapath_width_bit} [get_ips nf_10g_attachment_ip]
+set_property CONFIG.C_S_AXIS_DATA_WIDTH ${datapath_width_bit} [get_ips nf_10g_attachment_ip]
+set_property generate_synth_checkpoint false [get_files nf_10g_attachment_ip.xci]
+reset_target all [get_ips nf_10g_attachment_ip]
+generate_target all [get_ips nf_10g_attachment_ip]
 
 create_ip -name nf_axis_converter -vendor NetFPGA -library NetFPGA -module_name nf_axis_converter_m_ip
-set_property CONFIG.C_M_AXIS_DATA_WIDTH ${datapath_width_bit} [get_ips nf_axis_converter_m_ip]
-set_property CONFIG.C_S_AXIS_DATA_WIDTH 512 [get_ips nf_axis_converter_m_ip]
+set_property CONFIG.C_M_AXIS_DATA_WIDTH 512 [get_ips nf_axis_converter_m_ip]
+set_property CONFIG.C_S_AXIS_DATA_WIDTH ${datapath_width_bit} [get_ips nf_axis_converter_m_ip]
 set_property generate_synth_checkpoint false [get_files nf_axis_converter_m_ip.xci]
 reset_target all [get_ips nf_axis_converter_m_ip]
 generate_target all [get_ips nf_axis_converter_m_ip]
+
+create_ip -name nf_axis_converter -vendor NetFPGA -library NetFPGA -module_name nf_axis_converter_s_ip
+set_property CONFIG.C_M_AXIS_DATA_WIDTH ${datapath_width_bit} [get_ips nf_axis_converter_s_ip]
+set_property CONFIG.C_S_AXIS_DATA_WIDTH 512 [get_ips nf_axis_converter_s_ip]
+set_property generate_synth_checkpoint false [get_files nf_axis_converter_s_ip.xci]
+reset_target all [get_ips nf_axis_converter_s_ip]
+generate_target all [get_ips nf_axis_converter_s_ip]
 
 create_ip -name axi_crossbar -vendor xilinx.com -library ip -module_name axi_crossbar_0
 set_property -dict [list \

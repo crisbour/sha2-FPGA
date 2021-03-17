@@ -42,7 +42,7 @@ read_verilog "./hdl/hcu.sv"
 read_verilog "./hdl/hcu_define.v"
 read_verilog "./hdl/madd_32_64.v"
 read_verilog "./hdl/madd_Kt.v"
-read_verilog "./hdl/padder.v"
+read_verilog "./hdl/padder.sv"
 read_verilog "./hdl/wt_sigma_define.v"
 read_verilog "./hdl/wt_unit.v"  
 update_compile_order -fileset sources_1
