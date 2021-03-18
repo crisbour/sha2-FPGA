@@ -355,12 +355,6 @@ end
 ******** Feed Data In Logic *******
 */
 
-// Propagate data from R_reg to L_reg if needed
-always @(posedge axis_aclk) begin
-    if(shift_reg & ~reset)
-        L_reg <= R_reg;
-end
-
 // Count length of padded message
 task count_message;
     input [63:0] length_inc;
@@ -375,10 +369,13 @@ endtask : count_message
 // Feed R_reg
 always @(posedge axis_aclk) begin
     if(reset) begin
-        R_reg <= 0;
         L_reg <= 0;
+	    R_reg <= 0;
     end
     else begin
+        if(shift_reg)
+            L_reg <= R_reg;
+
         case(state)
             RESET: begin
                 bom <= 1;
