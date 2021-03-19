@@ -15,7 +15,7 @@ from cocotb.regression import TestFactory
 from cocotb.scoreboard import Scoreboard
 from cocotbext.axis import *
 
-from sha_model import Sha
+from sha_model import get_sha_method
 
 # Data generators
 with warnings.catch_warnings():
@@ -33,6 +33,8 @@ class PadderTB(object):
         dut._log.info("Preparing tb for padder, codec={codec}")
         self.dut = dut
         self.codec = codec   # sha_type_actual
+        self.sha = get_sha_method(codec=codec)
+
         self.s_axis = AXIS_Driver(dut, "s_axis", dut.axis_aclk)
         self.backpressure = BitDriver(dut.m_axis_tready, dut.axis_aclk)
         self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axis_aclk)
@@ -60,18 +62,14 @@ class PadderTB(object):
         self.dut.axis_resetn <= 1
         self.dut._log.debug("Out of reset")
     
-    @staticmethod
-    def codec2sha_type(codec):
-        dict_types = {0x11:0b00, 0x12: 0b01, 0x13: 0b11}
-        return dict_types[codec]
 
     def model(self, transaction):
         message = transaction['data']
         self.dut._log.debug(f'Incoming message={message}')
         self.dut._log.debug(f'Length={len(message)}')
-        
-        sha = Sha(self.codec2sha_type(self.codec))
-        message = sha.padder(message)
+
+        self.sha.restart()
+        message = self.sha.padder(message)
         self.expected_output.append({'data': message,'user':80*'0'+little_endian_codec(self.codec)+32*'0'})
 
         while message:

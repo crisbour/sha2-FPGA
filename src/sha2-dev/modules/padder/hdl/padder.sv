@@ -191,88 +191,84 @@ assign complete = ~reg_status_actual[0] & (reg_count | ~sha_type[1])
 
 
 // ---------- Decode TKEEP ------
-genvar by;
-generate
-    integer local_last_valid_byte;
-    for(by=0;by<AXIS_TKEEP_WIDTH;by=by+1) begin
-        always_latch begin
-            if(s_axis_tkeep == {{(AXIS_TKEEP_WIDTH-by-1){1'b0}},{(by+1){1'b1}}})
-                local_last_valid_byte = by;
-                
-        end
-    end
-    always @(*) last_valid_byte = local_last_valid_byte[5:0];
-endgenerate
-// always @(*) begin
-//     // encode FIFO IN (8b->4b)
-//           case (s_axis_tkeep)
-//               64'h1                : last_valid_byte = 6'h0;
-//               64'h3                : last_valid_byte = 6'h1;
-//               64'h7                : last_valid_byte = 6'h2;
-//               64'hF                : last_valid_byte = 6'h3;
-//               64'h1F               : last_valid_byte = 6'h4;
-//               64'h3F               : last_valid_byte = 6'h5;
-//               64'h7F               : last_valid_byte = 6'h6;
-//               64'hFF               : last_valid_byte = 6'h7;
-//               64'h1FF              : last_valid_byte = 6'h8;
-//               64'h3FF              : last_valid_byte = 6'h9;
-//               64'h7FF              : last_valid_byte = 6'ha;
-//               64'hFFF              : last_valid_byte = 6'hb;
-//               64'h1FFF             : last_valid_byte = 6'hc;
-//               64'h3FFF             : last_valid_byte = 6'hd;
-//               64'h7FFF             : last_valid_byte = 6'he;
-//               64'hFFFF             : last_valid_byte = 6'hf;
-//               64'h1FFFF            : last_valid_byte = 6'h10;
-//               64'h3FFFF            : last_valid_byte = 6'h11;
-//               64'h7FFFF            : last_valid_byte = 6'h12;
-//               64'hFFFFF            : last_valid_byte = 6'h13;
-//               64'h1FFFFF           : last_valid_byte = 6'h14;
-//               64'h3FFFFF           : last_valid_byte = 6'h15;
-//               64'h7FFFFF           : last_valid_byte = 6'h16;
-//               64'hFFFFFF           : last_valid_byte = 6'h17;
-//               64'h1FFFFFF          : last_valid_byte = 6'h18;
-//               64'h3FFFFFF          : last_valid_byte = 6'h19;
-//               64'h7FFFFFF          : last_valid_byte = 6'h1a;
-//               64'hFFFFFFF          : last_valid_byte = 6'h1b;
-//               64'h1FFFFFFF         : last_valid_byte = 6'h1c;
-//               64'h3FFFFFFF         : last_valid_byte = 6'h1d;
-//               64'h7FFFFFFF         : last_valid_byte = 6'h1e;
-//               64'hFFFFFFFF         : last_valid_byte = 6'h1f;
-//               64'h1_FFFFFFFF       : last_valid_byte = 6'h20;
-//               64'h3_FFFFFFFF       : last_valid_byte = 6'h21;
-//               64'h7_FFFFFFFF       : last_valid_byte = 6'h22;
-//               64'hF_FFFFFFFF       : last_valid_byte = 6'h23;
-//               64'h1F_FFFFFFFF      : last_valid_byte = 6'h24;
-//               64'h3F_FFFFFFFF      : last_valid_byte = 6'h25;
-//               64'h7F_FFFFFFFF      : last_valid_byte = 6'h26;
-//               64'hFF_FFFFFFFF      : last_valid_byte = 6'h27;
-//               64'h1FF_FFFFFFFF     : last_valid_byte = 6'h28;
-//               64'h3FF_FFFFFFFF     : last_valid_byte = 6'h29;
-//               64'h7FF_FFFFFFFF     : last_valid_byte = 6'h2a;
-//               64'hFFF_FFFFFFFF     : last_valid_byte = 6'h2b;
-//               64'h1FFF_FFFFFFFF    : last_valid_byte = 6'h2c;
-//               64'h3FFF_FFFFFFFF    : last_valid_byte = 6'h2d;
-//               64'h7FFF_FFFFFFFF    : last_valid_byte = 6'h2e;
-//               64'hFFFF_FFFFFFFF    : last_valid_byte = 6'h2f;
-//               64'h1FFFF_FFFFFFFF   : last_valid_byte = 6'h30;
-//               64'h3FFFF_FFFFFFFF   : last_valid_byte = 6'h31;
-//               64'h7FFFF_FFFFFFFF   : last_valid_byte = 6'h32;
-//               64'hFFFFF_FFFFFFFF   : last_valid_byte = 6'h33;
-//               64'h1FFFFF_FFFFFFFF  : last_valid_byte = 6'h34;
-//               64'h3FFFFF_FFFFFFFF  : last_valid_byte = 6'h35;
-//               64'h7FFFFF_FFFFFFFF  : last_valid_byte = 6'h36;
-//               64'hFFFFFF_FFFFFFFF  : last_valid_byte = 6'h37;
-//               64'h1FFFFFF_FFFFFFFF : last_valid_byte = 6'h38;
-//               64'h3FFFFFF_FFFFFFFF : last_valid_byte = 6'h39;
-//               64'h7FFFFFF_FFFFFFFF : last_valid_byte = 6'h3a;
-//               64'hFFFFFFF_FFFFFFFF : last_valid_byte = 6'h3b;
-//               64'h1FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3c;
-//               64'h3FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3d;
-//               64'h7FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3e;
-//               64'hFFFFFFFF_FFFFFFFF: last_valid_byte = 6'h3f;
-//               default:  last_valid_byte = 6'h00;
-//           endcase
+// genvar by;
+// always_latch begin
+//     for(by=0;by<AXIS_TKEEP_WIDTH;by=by+1) begin
+//         if(s_axis_tkeep == {{(AXIS_TKEEP_WIDTH-by-1){1'b0}},{(by+1){1'b1}}})
+//             last_valid_byte = by[5:0];
+            
+//     end
 // end
+always @(*) begin
+    // encode FIFO IN (8b->4b)
+          case (s_axis_tkeep)
+              64'h1                : last_valid_byte = 6'h0;
+              64'h3                : last_valid_byte = 6'h1;
+              64'h7                : last_valid_byte = 6'h2;
+              64'hF                : last_valid_byte = 6'h3;
+              64'h1F               : last_valid_byte = 6'h4;
+              64'h3F               : last_valid_byte = 6'h5;
+              64'h7F               : last_valid_byte = 6'h6;
+              64'hFF               : last_valid_byte = 6'h7;
+              64'h1FF              : last_valid_byte = 6'h8;
+              64'h3FF              : last_valid_byte = 6'h9;
+              64'h7FF              : last_valid_byte = 6'ha;
+              64'hFFF              : last_valid_byte = 6'hb;
+              64'h1FFF             : last_valid_byte = 6'hc;
+              64'h3FFF             : last_valid_byte = 6'hd;
+              64'h7FFF             : last_valid_byte = 6'he;
+              64'hFFFF             : last_valid_byte = 6'hf;
+              64'h1FFFF            : last_valid_byte = 6'h10;
+              64'h3FFFF            : last_valid_byte = 6'h11;
+              64'h7FFFF            : last_valid_byte = 6'h12;
+              64'hFFFFF            : last_valid_byte = 6'h13;
+              64'h1FFFFF           : last_valid_byte = 6'h14;
+              64'h3FFFFF           : last_valid_byte = 6'h15;
+              64'h7FFFFF           : last_valid_byte = 6'h16;
+              64'hFFFFFF           : last_valid_byte = 6'h17;
+              64'h1FFFFFF          : last_valid_byte = 6'h18;
+              64'h3FFFFFF          : last_valid_byte = 6'h19;
+              64'h7FFFFFF          : last_valid_byte = 6'h1a;
+              64'hFFFFFFF          : last_valid_byte = 6'h1b;
+              64'h1FFFFFFF         : last_valid_byte = 6'h1c;
+              64'h3FFFFFFF         : last_valid_byte = 6'h1d;
+              64'h7FFFFFFF         : last_valid_byte = 6'h1e;
+              64'hFFFFFFFF         : last_valid_byte = 6'h1f;
+              64'h1_FFFFFFFF       : last_valid_byte = 6'h20;
+              64'h3_FFFFFFFF       : last_valid_byte = 6'h21;
+              64'h7_FFFFFFFF       : last_valid_byte = 6'h22;
+              64'hF_FFFFFFFF       : last_valid_byte = 6'h23;
+              64'h1F_FFFFFFFF      : last_valid_byte = 6'h24;
+              64'h3F_FFFFFFFF      : last_valid_byte = 6'h25;
+              64'h7F_FFFFFFFF      : last_valid_byte = 6'h26;
+              64'hFF_FFFFFFFF      : last_valid_byte = 6'h27;
+              64'h1FF_FFFFFFFF     : last_valid_byte = 6'h28;
+              64'h3FF_FFFFFFFF     : last_valid_byte = 6'h29;
+              64'h7FF_FFFFFFFF     : last_valid_byte = 6'h2a;
+              64'hFFF_FFFFFFFF     : last_valid_byte = 6'h2b;
+              64'h1FFF_FFFFFFFF    : last_valid_byte = 6'h2c;
+              64'h3FFF_FFFFFFFF    : last_valid_byte = 6'h2d;
+              64'h7FFF_FFFFFFFF    : last_valid_byte = 6'h2e;
+              64'hFFFF_FFFFFFFF    : last_valid_byte = 6'h2f;
+              64'h1FFFF_FFFFFFFF   : last_valid_byte = 6'h30;
+              64'h3FFFF_FFFFFFFF   : last_valid_byte = 6'h31;
+              64'h7FFFF_FFFFFFFF   : last_valid_byte = 6'h32;
+              64'hFFFFF_FFFFFFFF   : last_valid_byte = 6'h33;
+              64'h1FFFFF_FFFFFFFF  : last_valid_byte = 6'h34;
+              64'h3FFFFF_FFFFFFFF  : last_valid_byte = 6'h35;
+              64'h7FFFFF_FFFFFFFF  : last_valid_byte = 6'h36;
+              64'hFFFFFF_FFFFFFFF  : last_valid_byte = 6'h37;
+              64'h1FFFFFF_FFFFFFFF : last_valid_byte = 6'h38;
+              64'h3FFFFFF_FFFFFFFF : last_valid_byte = 6'h39;
+              64'h7FFFFFF_FFFFFFFF : last_valid_byte = 6'h3a;
+              64'hFFFFFFF_FFFFFFFF : last_valid_byte = 6'h3b;
+              64'h1FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3c;
+              64'h3FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3d;
+              64'h7FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3e;
+              64'hFFFFFFFF_FFFFFFFF: last_valid_byte = 6'h3f;
+              default:  last_valid_byte = 6'h00;
+          endcase
+end
 
 // ---------- FSM --------------
 //FSM registers

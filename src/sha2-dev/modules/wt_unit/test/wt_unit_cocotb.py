@@ -19,7 +19,7 @@ from cocotb.binary import BinaryValue
 from collections import deque
 
 # My sha model:
-from sha_model import Sha
+from sha_model import get_sha_method
 
 # Data generators
 with warnings.catch_warnings():
@@ -32,9 +32,10 @@ BLOCK_BYTE_WIDTH = 64
 
 class WtUnitTB(object):
 
-    def __init__(self, dut, sha_type, debug=False):
+    def __init__(self, dut, codec, debug=False):
         self.dut = dut
-        self.sha_type = sha_type
+        self.codec = codec
+        self.sha = get_sha_method(codec=codec)
         self.dut._log.info(f'Creating testbench with sha_type={Sha.resolve_name(sha_type)}')
 
         self.s_axis = AXIS_Driver(dut, "s_axis", dut.axis_aclk)
@@ -70,8 +71,8 @@ class WtUnitTB(object):
     def model(self, transaction):
         self.dut._log.debug('Transaction={}'.format(transaction))
         message = transaction['data']
-        sha = Sha(self.sha_type)
-        buffer = sha.wt_transaction(message=message)
+        self.sha.reset()
+        buffer = self.sha.wt_transaction(message=message)
         self.expected_output.append({'data': buffer, 'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
 
 def random_message(sha_type ,min_blocks=1, max_blocks=4, npackets=4):
@@ -87,14 +88,14 @@ def random_message(sha_type ,min_blocks=1, max_blocks=4, npackets=4):
         yield get_bytes(BLOCK_BYTE_WIDTH*mult_blocks*random.randint(min_blocks, max_blocks), random_data())
 
 
-async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None):
+async def run_test(dut, data_in=None, codec='sha256', backpressure_inserter=None):
     #dut._log.setLevel(logging.DEBUG)
     dut.m_axis_tready <= 0;
 
     """ Setup testbench and run a test. """
     clock = Clock(dut.axis_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
     cocotb.fork(clock.start())  # Start the clock
-    tb = WtUnitTB(dut, sha_type, True)
+    tb = WtUnitTB(dut, codec, True)
 
     await tb.reset()
 
@@ -105,7 +106,7 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
 
     # Send in the packets
     for transaction in data_in(sha_type):
-        tb.s_axis.bus.tuser <= BinaryValue(94*'0'+"{0:02b}".format(sha_type)+32*'0')
+        tb.s_axis.bus.tuser <= BinaryValue(80*'0'+"{0:016b}".format(codec)+32*'0')
         await tb.s_axis.send(transaction)
 
     # Wait for last transmission
@@ -121,7 +122,7 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
 
 # Register the test.
 factory = TestFactory(run_test)
-factory.add_option("sha_type", [0,1,2,3])
+factory.add_option("codec", [0x11,0x12,0x13])
 factory.add_option("data_in", [random_message])
 factory.add_option("backpressure_inserter", 
                     [None, random_50_percent]) # Throtle tready: random_50_percent
