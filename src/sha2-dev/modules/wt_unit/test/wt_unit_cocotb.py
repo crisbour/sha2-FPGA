@@ -19,7 +19,7 @@ from cocotb.binary import BinaryValue
 from collections import deque
 
 # My sha model:
-from sha_model import get_sha_method
+from sha_model import Sha
 
 # Data generators
 with warnings.catch_warnings():
@@ -35,8 +35,8 @@ class WtUnitTB(object):
     def __init__(self, dut, codec, debug=False):
         self.dut = dut
         self.codec = codec
-        self.sha = get_sha_method(codec=codec)
-        self.dut._log.info(f'Creating testbench with sha_type={Sha.resolve_name(sha_type)}')
+        self.sha = Sha.get_method(codec=codec)
+        self.dut._log.info(f'Creating testbench with sha_type={self.sha.sha_name}')
 
         self.s_axis = AXIS_Driver(dut, "s_axis", dut.axis_aclk)
         self.backpressure = BitDriver(dut.m_axis_tready, dut.axis_aclk)
@@ -65,19 +65,16 @@ class WtUnitTB(object):
         self.dut.axis_resetn <= 1
         self.dut._log.debug("Out of reset")
 
-    def _rotr(self, word, rsh):
-        return ((word >> rsh) | (word<<(32-rsh))) & 0xFFFFFFFF
-
     def model(self, transaction):
         self.dut._log.debug('Transaction={}'.format(transaction))
         message = transaction['data']
-        self.sha.reset()
+        self.sha.init()
         buffer = self.sha.wt_transaction(message=message)
-        self.expected_output.append({'data': buffer, 'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
+        self.expected_output.append({'data': buffer, 'user':80*'0'+little_endian_codec(self.codec)+32*'0'})
 
-def random_message(sha_type ,min_blocks=1, max_blocks=4, npackets=4):
+def random_message(blocks512 ,min_blocks=1, max_blocks=4, npackets=4):
     """random string data of a random length"""
-    if sha_type>>1:
+    if blocks512>>1:
         max_blocks = int(max_blocks/2)
         if(max_blocks == 0):
             max_blocks = 1
@@ -87,9 +84,13 @@ def random_message(sha_type ,min_blocks=1, max_blocks=4, npackets=4):
     for _ in range(npackets):
         yield get_bytes(BLOCK_BYTE_WIDTH*mult_blocks*random.randint(min_blocks, max_blocks), random_data())
 
+def little_endian_codec(codec):
+    if(codec >= 0x80):
+        codec = codec<<8 | codec >>8;
+    return "{0:016b}".format(codec)
 
 async def run_test(dut, data_in=None, codec='sha256', backpressure_inserter=None):
-    #dut._log.setLevel(logging.DEBUG)
+    # dut._log.setLevel(logging.DEBUG)
     dut.m_axis_tready <= 0;
 
     """ Setup testbench and run a test. """
@@ -105,8 +106,8 @@ async def run_test(dut, data_in=None, codec='sha256', backpressure_inserter=None
         tb.backpressure.start(backpressure_inserter())
 
     # Send in the packets
-    for transaction in data_in(sha_type):
-        tb.s_axis.bus.tuser <= BinaryValue(80*'0'+"{0:016b}".format(codec)+32*'0')
+    for transaction in data_in(Sha.blocks512(codec)):
+        tb.s_axis.bus.tuser <= BinaryValue(80*'0'+little_endian_codec(codec)+32*'0')
         await tb.s_axis.send(transaction)
 
     # Wait for last transmission
@@ -122,7 +123,7 @@ async def run_test(dut, data_in=None, codec='sha256', backpressure_inserter=None
 
 # Register the test.
 factory = TestFactory(run_test)
-factory.add_option("codec", [0x11,0x12,0x13])
+factory.add_option("codec", [0x12,0x13,0x09,0x10])
 factory.add_option("data_in", [random_message])
 factory.add_option("backpressure_inserter", 
                     [None, random_50_percent]) # Throtle tready: random_50_percent

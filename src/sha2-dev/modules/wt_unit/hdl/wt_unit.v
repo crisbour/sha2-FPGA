@@ -20,15 +20,14 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 `include "wt_sigma_define.v"
-
+`include "multiformats_codec.vh"
 module wt_unit
 #(
     // AXI Stream Data Width
     parameter C_M_AXIS_DATA_WIDTH=64,
     parameter C_S_AXIS_DATA_WIDTH=512,
     parameter DATA_BLOCK_REG_WIDTH=512,
-    parameter C_M_AXIS_TUSER_WIDTH=128,
-    parameter C_S_AXIS_TUSER_WIDTH=128
+    parameter C_AXIS_TUSER_WIDTH=128
 )
 (
     // Global Ports
@@ -37,14 +36,14 @@ module wt_unit
 
     // Master Stream Port
     output [(C_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
-    output reg [(C_M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
+    output reg [(C_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
     output reg m_axis_tvalid,
     input m_axis_tready,
     output reg m_axis_tlast,
 
     // Slave Stream Port
     input [(C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
-    input [(C_S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
+    input [(C_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
     input s_axis_tvalid,
     output reg s_axis_tready,
     input s_axis_tlast
@@ -74,6 +73,7 @@ wire load_reg;
 wire hcu_read;
 reg finish;
 wire [1:0] sha_type;
+wire [15:0] codec;
 reg [6:0] loopbacks;
 
 // ---------- Hash identification -----------------

@@ -5,11 +5,12 @@ import os
 import sys
 
 class Sha2:
+    _config_filename = "hash_config.yaml"
 
-    def extract_config(self, filename):
-        with open(os.path.join(os.path.dirname(__file__), filename),'r') as file:
+    def extract_config(self, sha_name):
+        with open(os.path.join(os.path.dirname(__file__), self._config_filename),'r') as file:
             yaml_dict = yaml.load(file, Loader=yaml.FullLoader)
-            config = yaml_dict['sha_hashing'][self.sha_name]
+            config = yaml_dict['sha_hashing'][sha_name]
             counter_type = config['counter_type']
             if(counter_type == 'bytes'):
                 prescaler = 1
@@ -31,16 +32,16 @@ class Sha2:
             self.kt = [val for val in kt for _ in range(kt_reps)]
             self.output_size = config['HashCompute']['FinalHash']['output_size']
 
-    def restart(self):
+    def init(self):
         self.regs = self.hash = self.hash0[:]
         self.windex = 0
     
     def __init__(self, sha_name=None):
         self.sha_name = sha_name
-        self.extract_config("hash_config.yaml")
+        self.extract_config(sha_name)
         self.wt_size_bits = 8 * self.word_size
         self.mod_mask = (1<<self.wt_size_bits) - 1
-        self.restart()
+        self.init()
 
     def _rotr(self, word, rsh):
         return ((word >> rsh) | (word<<(self.wt_size_bits-rsh))) & self.mod_mask

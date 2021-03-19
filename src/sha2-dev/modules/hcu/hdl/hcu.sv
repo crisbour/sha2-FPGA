@@ -20,6 +20,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 `include "hcu_define.v"
+`include "multiformats_codec.vh"
 module hcu
 #(
     // AXI Strem Data Width
@@ -94,12 +95,38 @@ wire reset;
 assign reset = ~axis_resetn;
 
 wire [1:0] sha_type;
-assign sha_type = (s_axis_tvalid & state==RESET) ? 
-                s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1 :
-                        TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET] 
-                : m_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
-                        TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET];
+wire [15:0] codec;
 
+// ---------- Hash identification -----------------
+function [15:0] extract_codec;
+    input [C_M_AXIS_TUSER_WIDTH-1:0] tuser;
+    begin
+        if(tuser[`CODEC_POS + 7: `CODEC_POS] >= 8'h80) 
+            extract_codec = {tuser[`CODEC_POS+7: `CODEC_POS],tuser[`CODEC_POS+15: `CODEC_POS+8]};
+        else
+            extract_codec = tuser[`CODEC_POS + 15: `CODEC_POS];
+    end
+
+endfunction
+
+// Bit 0 signifies if the codec is supported
+// Bit 1 signifies whether it is a 512 or 1024 block based sha hash. Supports sha1 and sha2
+function [1:0] codec2sha_type;
+    input [15:0] codec;
+    begin
+        case(codec)
+            `CODEC_SHA2_224:    codec2sha_type = 2'b00;
+            `CODEC_SHA2_256:    codec2sha_type = 2'b01;
+            `CODEC_SHA2_384:    codec2sha_type = 2'b10;
+            `CODEC_SHA2_512:    codec2sha_type = 2'b11;
+            default:            codec2sha_type = 2'b00;
+        endcase
+    end
+endfunction
+
+// Logic
+assign codec = (s_axis_tvalid & state==RESET) ? extract_codec(s_axis_tuser) : extract_codec(m_axis_tuser);
+assign sha_type = codec2sha_type(codec);
 
 // Computation blocks
 wire [REG_LENGTH-1 : 0] sigma0, sigma0_32, sigma0_64;
