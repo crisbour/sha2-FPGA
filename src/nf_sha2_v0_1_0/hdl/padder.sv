@@ -18,15 +18,13 @@
 // Additional Comments:
 //
 //////////////////////////////////////////////////////////////////////////////////
-
+`include "multiformats_codec.vh"
 `define HARD_WIRED
 module padder
 #(
     // AXI Stream Data Width
-    parameter C_M_AXIS_DATA_WIDTH=512,
-    parameter C_S_AXIS_DATA_WIDTH=512,
-    parameter C_M_AXIS_TUSER_WIDTH=128,
-    parameter C_S_AXIS_TUSER_WIDTH=128
+    parameter C_AXIS_DATA_WIDTH=512,
+    parameter C_AXIS_TUSER_WIDTH=128
 )
 (
 // Global Ports
@@ -34,30 +32,26 @@ input axis_aclk,
 input axis_resetn,
 
 // Master Stream Port
-output [(C_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
-output reg [(C_M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
+output [(C_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
+output reg [(C_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
 output m_axis_tvalid,
 input m_axis_tready,
 output reg m_axis_tlast,
 
 // Slave Stream Port
-input [(C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+input [(C_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
 // Bits 34 and 33 of tuser represent sha_type
 // msb is 0 if SHA224/256 and 1 if SHA384/512
-input [(C_S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
-input [((C_M_AXIS_DATA_WIDTH)/8-1):0] s_axis_tkeep,
+input [(C_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
+input [((C_AXIS_DATA_WIDTH)/8-1):0] s_axis_tkeep,
 input s_axis_tvalid,
 output wire s_axis_tready,
 input s_axis_tlast
 );
 
-localparam DATA_BLOCK_REG_WIDTH=512;
-
 // ----- TUSER specs for identify sha_type ----
 localparam TUESR_SLOT_OFFSET = 32;
 localparam TUSER_SLOT_WIDTH = 16;
-localparam HASH_TUSER_SLOT = 0;
-localparam SHA_TUSER_OFFSET = 0;
 
 function integer log2;
     input integer number;
@@ -91,9 +85,39 @@ end
 `endif
 endfunction //big_endian
 
+// ---------- Sha identification -----------------
+// Bit 0 signifies if the codec is supported
+// Bit 1 signifies whether it is a 512 or 1024 block based sha hash. Supports sha1 and sha2
+function [1:0] sha_id;
+    input [C_AXIS_TUSER_WIDTH-1:0] tuser;
+    reg [15:0] codec;
+    begin
+        if(tuser[`CODEC_POS + 7: `CODEC_POS] >= 8'h80) 
+            codec = {tuser[`CODEC_POS+7: `CODEC_POS],tuser[`CODEC_POS+15: `CODEC_POS+8]};
+        else
+            codec = tuser[`CODEC_POS + 15: `CODEC_POS];
+        case(codec)
+            `CODEC_SHA1:        sha_id = 2'b01;
+            `CODEC_MD5:         sha_id = 2'b01;
+            `CODEC_MD4:         sha_id = 2'b01;
+            `CODEC_RIPEMD_128:  sha_id = 2'b01;
+            `CODEC_RIPEMD_160:  sha_id = 2'b01;
+            `CODEC_RIPEMD_256:  sha_id = 2'b01;
+            `CODEC_RIPEMD_320:  sha_id = 2'b01;
+            `CODEC_SHA2_224:    sha_id = 2'b01;
+            `CODEC_SHA2_256:    sha_id = 2'b01;
+            `CODEC_SHA2_384:    sha_id = 2'b11;
+            `CODEC_SHA2_512:    sha_id = 2'b11;
+            default:            sha_id = 2'b00;
+        endcase
+    end
+
+endfunction
+
 // ---------- Internal Parameters ------------------
-localparam C_S_AXIS_TKEEP_WIDTH = C_M_AXIS_DATA_WIDTH/8;
-localparam NUM_BYTES_WIDTH = log2(C_S_AXIS_TKEEP_WIDTH);
+localparam AXIS_TKEEP_WIDTH = C_AXIS_DATA_WIDTH/8;
+localparam DATA_BLOCK_REG_WIDTH=512;
+localparam NUM_BYTES_WIDTH = log2(AXIS_TKEEP_WIDTH);
 localparam LEN_FIELD_BYTES = 8;
 localparam LEN_FIELD_WIDTH = 8 * LEN_FIELD_BYTES;
 
@@ -121,26 +145,10 @@ reg bom;        // Begining of message
 
 wire shift_reg, m_transmit, empty_regs, last_received, complete;
 
-// Initial values
-initial begin
-    state = RESET;
-    m_axis_tlast = 0;
-    s_axis_tready_fsm = 0;
-    s_axis_tready_next = 0;
-    reg_status = 2'b00;
-    length_low = 0;
-    length_high = 0;
-    reg_count = 0;
-    next_byte = 0;
-    m_axis_tuser = 0;
-end
-
 
 // ----------- Logic -----------
-assign sha_type = bom   ? s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
-                                TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET] 
-                        : m_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
-                                TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET];
+// Identify sha_type
+assign sha_type = bom   ? sha_id(s_axis_tuser) : sha_id(m_axis_tuser);
 // Transmitting padded message block
 assign m_axis_tvalid = sha_type[1] ? reg_status[1] : reg_status[0];
 assign m_axis_tdata = sha_type[1] ? L_reg : R_reg;
@@ -167,8 +175,39 @@ assign complete = ~reg_status_actual[0] & (reg_count | ~sha_type[1])
                 & (next_byte < 56 - 8*sha_type[1]);
 
 
+//FSM registers
+reg [2:0] state, state_next;
+reg s_axis_tready_next, s_axis_tready_fsm;
+reg m_axis_tlast_next;
+localparam RESET = 0;
+localparam FEED = 1;
+localparam PAD = 2;
+localparam EXTRA_PAD = 3;
+localparam WAIT = 4;
+
+// Initial values
+initial begin
+    state = RESET;
+    m_axis_tlast = 0;
+    s_axis_tready_fsm = 0;
+    s_axis_tready_next = 0;
+    reg_status = 2'b00;
+    length_low = 0;
+    length_high = 0;
+    reg_count = 0;
+    next_byte = 0;
+    m_axis_tuser = 0;
+end
 
 // ---------- Decode TKEEP ------
+// genvar by;
+// always_latch begin
+//     for(by=0;by<AXIS_TKEEP_WIDTH;by=by+1) begin
+//         if(s_axis_tkeep == {{(AXIS_TKEEP_WIDTH-by-1){1'b0}},{(by+1){1'b1}}})
+//             last_valid_byte = by[5:0];
+            
+//     end
+// end
 always @(*) begin
     // encode FIFO IN (8b->4b)
           case (s_axis_tkeep)
@@ -241,15 +280,6 @@ always @(*) begin
 end
 
 // ---------- FSM --------------
-//FSM registers
-reg [2:0] state, state_next;
-reg s_axis_tready_next, s_axis_tready_fsm;
-reg m_axis_tlast_next;
-localparam RESET = 0;
-localparam FEED = 1;
-localparam PAD = 2;
-localparam EXTRA_PAD = 3;
-localparam WAIT = 4;
 
 // FSM transitions
 always @(*) begin
@@ -321,12 +351,6 @@ end
 ******** Feed Data In Logic *******
 */
 
-// Propagate data from R_reg to L_reg if needed
-always @(posedge axis_aclk) begin
-    if(shift_reg)
-        L_reg <= R_reg;
-end
-
 // Count length of padded message
 task count_message;
     input [63:0] length_inc;
@@ -341,10 +365,13 @@ endtask : count_message
 // Feed R_reg
 always @(posedge axis_aclk) begin
     if(reset) begin
-        R_reg <= #1 0;
-        L_reg <= #1 0;
+        L_reg <= 0;
+	    R_reg <= 0;
     end
     else begin
+        if(shift_reg)
+            L_reg <= R_reg;
+
         case(state)
             RESET: begin
                 bom <= 1;
@@ -365,9 +392,9 @@ always @(posedge axis_aclk) begin
                         if(s_axis_tlast)begin
                             // Write tdata to R_reg
                             R_reg <= s_axis_tdata;
-                            next_byte = last_valid_byte + 1;
+                            next_byte <= last_valid_byte + 1;
                             count_message(({58'b0,last_valid_byte} + 1) * 8);
-                            if(next_byte == 0) begin    // If there weren't any null bytes in the last frame
+                            if(last_valid_byte + 1 == 64) begin    // If there weren't any null bytes in the last frame
                                 reg_status <= reg_status_actual | 2'b01;
                                 reg_count <= ~reg_count;
                             end else begin
@@ -403,7 +430,7 @@ always @(posedge axis_aclk) begin
                     end
                     R_reg <= (R_reg & ((1<<(8 * next_byte)) - 1)) | pad;
                     reg_status <= reg_status_actual | 2'b01;
-                    next_byte = 0;
+                    next_byte <= 0;
                     reg_count <= ~reg_count;
                 end
             end

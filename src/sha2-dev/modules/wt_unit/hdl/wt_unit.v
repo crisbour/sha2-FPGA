@@ -281,7 +281,7 @@ always @(posedge axis_aclk) begin
 
             BLOCK512: begin
                 if(load_reg & ~finish) begin
-                    for(i=0;i<16;i++) begin
+                    for(i=0;i<16;i=i+1) begin
                         /* verilator lint_off WIDTH */
                         Reg[i][31:0] <= (s_axis_tdata >> (32*(15-i))) & 32'hFFFFFFFF;
                         Reg[i][63:32] <= 0;

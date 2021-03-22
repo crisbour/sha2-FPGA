@@ -20,15 +20,13 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 `include "wt_sigma_define.v"
-
+`include "multiformats_codec.vh"
+`define C_S_AXIS_DATA_WIDTH 512
 module wt_unit
 #(
     // AXI Stream Data Width
     parameter C_M_AXIS_DATA_WIDTH=64,
-    parameter C_S_AXIS_DATA_WIDTH=512,
-    parameter DATA_BLOCK_REG_WIDTH=512,
-    parameter C_M_AXIS_TUSER_WIDTH=128,
-    parameter C_S_AXIS_TUSER_WIDTH=128
+    parameter C_AXIS_TUSER_WIDTH=128
 )
 (
     // Global Ports
@@ -37,14 +35,14 @@ module wt_unit
 
     // Master Stream Port
     output [(C_M_AXIS_DATA_WIDTH-1):0] m_axis_tdata,
-    output reg [(C_M_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
+    output reg [(C_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
     output reg m_axis_tvalid,
     input m_axis_tready,
     output reg m_axis_tlast,
 
     // Slave Stream Port
-    input [(C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
-    input [(C_S_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
+    input [(`C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+    input [(C_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
     input s_axis_tvalid,
     output reg s_axis_tready,
     input s_axis_tlast
@@ -74,13 +72,41 @@ wire load_reg;
 wire hcu_read;
 reg finish;
 wire [1:0] sha_type;
+wire [15:0] codec;
 reg [6:0] loopbacks;
 
-assign sha_type = (s_axis_tvalid & state==IDLE) ? s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
-                                TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET] 
-                        : m_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
-                                TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET];
+// ---------- Hash identification -----------------
+function [15:0] extract_codec;
+    input [C_AXIS_TUSER_WIDTH-1:0] tuser;
+    begin
+        if(tuser[`CODEC_POS + 7: `CODEC_POS] >= 8'h80) 
+            extract_codec = {tuser[`CODEC_POS+7: `CODEC_POS],tuser[`CODEC_POS+15: `CODEC_POS+8]};
+        else
+            extract_codec = tuser[`CODEC_POS + 15: `CODEC_POS];
+    end
 
+endfunction
+
+// Bit 0 signifies if the codec is supported
+// Bit 1 signifies whether it is a 512 or 1024 block based sha hash. Supports sha1 and sha2
+function [1:0] codec2sha_type;
+    input [15:0] codec;
+    begin
+        case(codec)
+            `CODEC_SHA2_224:    codec2sha_type = 2'b00;
+            `CODEC_SHA2_256:    codec2sha_type = 2'b01;
+            `CODEC_SHA2_384:    codec2sha_type = 2'b10;
+            `CODEC_SHA2_512:    codec2sha_type = 2'b11;
+            default:            codec2sha_type = 2'b00;
+        endcase
+    end
+endfunction
+
+
+// Logic
+assign codec = (s_axis_tvalid & state==IDLE) ? extract_codec(s_axis_tuser) : extract_codec(m_axis_tuser);
+
+assign sha_type = codec2sha_type(codec);
 
 assign hcu_read = m_axis_tready & m_axis_tvalid;
 assign load_reg = s_axis_tready & s_axis_tvalid;
@@ -255,6 +281,12 @@ always @(posedge axis_aclk) begin
 
             BLOCK512: begin
                 if(load_reg & ~finish) begin
+                    for(i=0;i<16;i=i+1) begin
+                        /* verilator lint_off WIDTH */
+                        Reg[i][31:0] <= (s_axis_tdata >> (32*(15-i))) & 32'hFFFFFFFF;
+                        Reg[i][63:32] <= 0;
+                        /* verilator lint_on WIDTH */
+                    end
                     if(s_axis_tlast)    finish <= 1;    // End of message
                 end
             end
@@ -284,37 +316,15 @@ always @(posedge axis_aclk) begin
                 end
             end
 
-            // BLOCK1024_L: begin
-            //     if(load_reg & ~finish) begin
-            //         for(i=0;i<8;i=i+1) begin
-            //             b = 64 * i;
-            //             // Change order of bytes such that msb in Message is msb in Reg
-            //             Reg[i][63:56]   <= 8'hff & (s_axis_tdata>>b);
-            //             Reg[i][55:48]   <= 8'hff & (s_axis_tdata>>(b+8));
-            //             Reg[i][47:40]   <= 8'hff & (s_axis_tdata>>(b+16));
-            //             Reg[i][39:32]   <= 8'hff & (s_axis_tdata>>(b+24));
-            //             Reg[i][31:24]   <= 8'hff & (s_axis_tdata>>(b+32));
-            //             Reg[i][23:16]   <= 8'hff & (s_axis_tdata>>(b+40));
-            //             Reg[i][15:8]    <= 8'hff & (s_axis_tdata>>(b+48));
-            //             Reg[i][7:0]     <= 8'hff & (s_axis_tdata>>(b+56));
-            //         end
-            //     end
-            // end
+            BLOCK1024_L: begin
+                if(load_reg & ~finish) begin
+                    {Reg[0],Reg[1],Reg[2],Reg[3],Reg[4],Reg[5],Reg[6],Reg[7]} <= s_axis_tdata;
+                end
+            end
 
             BLOCK1024_R: begin
                 if(load_reg & ~finish) begin
-                    // for(i=0;i<8;i=i+1) begin
-                    //     b = 64 * i;
-                    //     // Change order of bytes such that msb in Message is msb in Reg
-                    //     Reg[i+8][63:56]   <= 8'hff & (s_axis_tdata>>b);
-                    //     Reg[i+8][55:48]   <= 8'hff & (s_axis_tdata>>(b+8));
-                    //     Reg[i+8][47:40]   <= 8'hff & (s_axis_tdata>>(b+16));
-                    //     Reg[i+8][39:32]   <= 8'hff & (s_axis_tdata>>(b+24));
-                    //     Reg[i+8][31:24]   <= 8'hff & (s_axis_tdata>>(b+32));
-                    //     Reg[i+8][23:16]   <= 8'hff & (s_axis_tdata>>(b+40));
-                    //     Reg[i+8][15:8]    <= 8'hff & (s_axis_tdata>>(b+48));
-                    //     Reg[i+8][7:0]     <= 8'hff & (s_axis_tdata>>(b+56));
-                    // end
+                    {Reg[8],Reg[9],Reg[10],Reg[11],Reg[12],Reg[13],Reg[14],Reg[15]} <= s_axis_tdata;
                     if(s_axis_tlast)    finish <= 1;    // End of message
                 end
             end
@@ -343,32 +353,6 @@ always @(posedge axis_aclk) begin
     end
 end
 
-genvar indx,by;
-generate
-    for(by=0;by<4;by=by+1)
-        for(indx=0;indx<16;indx=indx+1)
-            always @(posedge axis_aclk) begin
-                if(state==BLOCK512 & ~reset & load_reg & ~finish) begin
-                    // Change order of bytes such that msb in Message is msb in Reg
-                    Reg[indx][8*by+7:8*by]     <= s_axis_tdata[32*indx+(31-8*by):32*indx+(24-8*by)];
-                end
-            end
-endgenerate
-
-generate
-    for(by=0;by<8;by=by+1)
-        for(indx=0;indx<8;indx=indx+1)
-            always @(posedge axis_aclk)begin
-                if(state==BLOCK1024_L & ~reset & load_reg & ~finish)begin
-                    // Change order of bytes such that msb in Message is msb in Reg
-                    Reg[indx][8*by+7:8*by]   <= s_axis_tdata[64*indx+(63-8*by):64*indx+(56-8*by)];
-                end
-                if(state==BLOCK1024_R & ~reset & load_reg & ~finish)begin
-                    // Change order of bytes such that msb in Message is msb in Reg
-                    Reg[indx+8][8*by+7:8*by]   <= s_axis_tdata[64*indx+(63-8*by):64*indx+(56-8*by)];
-                end
-            end
-endgenerate
 
 `ifdef COCOTB_SIM
 `ifndef VERILATOR // traced differently

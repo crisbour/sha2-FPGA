@@ -94,6 +94,15 @@ reg [6:0] word_count;
 wire reset;
 assign reset = ~axis_resetn;
 
+//FSM registers
+reg [2:0] state, state_next;
+reg s_axis_tready_next, m_axis_tvalid_next;
+localparam RESET = 0;
+localparam UPDATE_REG = 1;
+localparam FEED = 2;
+localparam UPDATE_HASH = 3;
+localparam DIGEST = 4;
+
 wire [1:0] sha_type;
 wire [15:0] codec;
 
@@ -172,14 +181,6 @@ end
 endtask
 
 // ---------- FSM --------------
-//FSM registers
-reg [2:0] state, state_next;
-reg s_axis_tready_next, m_axis_tvalid_next;
-localparam RESET = 0;
-localparam UPDATE_REG = 1;
-localparam FEED = 2;
-localparam UPDATE_HASH = 3;
-localparam DIGEST = 4;
 
 // FSM transitions
 always @(*) begin 

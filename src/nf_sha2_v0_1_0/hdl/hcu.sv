@@ -20,6 +20,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 `include "hcu_define.v"
+`include "multiformats_codec.vh"
 module hcu
 #(
     // AXI Strem Data Width
@@ -93,13 +94,48 @@ reg [6:0] word_count;
 wire reset;
 assign reset = ~axis_resetn;
 
-wire [1:0] sha_type;
-assign sha_type = (s_axis_tvalid & state==RESET) ? 
-                s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1 :
-                        TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET] 
-                : m_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
-                        TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET];
+//FSM registers
+reg [2:0] state, state_next;
+reg s_axis_tready_next, m_axis_tvalid_next;
+localparam RESET = 0;
+localparam UPDATE_REG = 1;
+localparam FEED = 2;
+localparam UPDATE_HASH = 3;
+localparam DIGEST = 4;
 
+wire [1:0] sha_type;
+wire [15:0] codec;
+
+// ---------- Hash identification -----------------
+function [15:0] extract_codec;
+    input [C_M_AXIS_TUSER_WIDTH-1:0] tuser;
+    begin
+        if(tuser[`CODEC_POS + 7: `CODEC_POS] >= 8'h80) 
+            extract_codec = {tuser[`CODEC_POS+7: `CODEC_POS],tuser[`CODEC_POS+15: `CODEC_POS+8]};
+        else
+            extract_codec = tuser[`CODEC_POS + 15: `CODEC_POS];
+    end
+
+endfunction
+
+// Bit 0 signifies if the codec is supported
+// Bit 1 signifies whether it is a 512 or 1024 block based sha hash. Supports sha1 and sha2
+function [1:0] codec2sha_type;
+    input [15:0] codec;
+    begin
+        case(codec)
+            `CODEC_SHA2_224:    codec2sha_type = 2'b00;
+            `CODEC_SHA2_256:    codec2sha_type = 2'b01;
+            `CODEC_SHA2_384:    codec2sha_type = 2'b10;
+            `CODEC_SHA2_512:    codec2sha_type = 2'b11;
+            default:            codec2sha_type = 2'b00;
+        endcase
+    end
+endfunction
+
+// Logic
+assign codec = (s_axis_tvalid & state==RESET) ? extract_codec(s_axis_tuser) : extract_codec(m_axis_tuser);
+assign sha_type = codec2sha_type(codec);
 
 // Computation blocks
 wire [REG_LENGTH-1 : 0] sigma0, sigma0_32, sigma0_64;
@@ -127,31 +163,24 @@ assign reset_hash = (state == RESET);
 assign update_hash = (state == UPDATE_HASH);
 
 
+initial begin
+    m_axis_tvalid = 0;
+    s_axis_tready = 0;
+end
 
 // ---------- Reset State: Task -------
 task reset_task();
 begin
 
     m_axis_tlast <= 0;
-    m_axis_tvalid <= 0;
-    s_axis_tready <= 0;
-    
-    finish <= 0;
 
+    finish <= 0;
     word_count <= 0;
 
 end
 endtask
 
 // ---------- FSM --------------
-//FSM registers
-reg [2:0] state, state_next;
-reg s_axis_tready_next, m_axis_tvalid_next;
-localparam RESET = 0;
-localparam UPDATE_REG = 1;
-localparam FEED = 2;
-localparam UPDATE_HASH = 3;
-localparam DIGEST = 4;
 
 // FSM transitions
 always @(*) begin 
@@ -199,6 +228,8 @@ always @(posedge axis_aclk)
 begin
     if(reset) begin
         state <= RESET;
+        m_axis_tvalid <= 0;
+        s_axis_tready <= 0;
         reset_task();
     end else begin
         state <= state_next;

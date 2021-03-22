@@ -145,20 +145,6 @@ reg bom;        // Begining of message
 
 wire shift_reg, m_transmit, empty_regs, last_received, complete;
 
-// Initial values
-initial begin
-    state = RESET;
-    m_axis_tlast = 0;
-    s_axis_tready_fsm = 0;
-    s_axis_tready_next = 0;
-    reg_status = 2'b00;
-    length_low = 0;
-    length_high = 0;
-    reg_count = 0;
-    next_byte = 0;
-    m_axis_tuser = 0;
-end
-
 
 // ----------- Logic -----------
 // Identify sha_type
@@ -189,6 +175,29 @@ assign complete = ~reg_status_actual[0] & (reg_count | ~sha_type[1])
                 & (next_byte < 56 - 8*sha_type[1]);
 
 
+//FSM registers
+reg [2:0] state, state_next;
+reg s_axis_tready_next, s_axis_tready_fsm;
+reg m_axis_tlast_next;
+localparam RESET = 0;
+localparam FEED = 1;
+localparam PAD = 2;
+localparam EXTRA_PAD = 3;
+localparam WAIT = 4;
+
+// Initial values
+initial begin
+    state = RESET;
+    m_axis_tlast = 0;
+    s_axis_tready_fsm = 0;
+    s_axis_tready_next = 0;
+    reg_status = 2'b00;
+    length_low = 0;
+    length_high = 0;
+    reg_count = 0;
+    next_byte = 0;
+    m_axis_tuser = 0;
+end
 
 // ---------- Decode TKEEP ------
 // genvar by;
@@ -271,15 +280,6 @@ always @(*) begin
 end
 
 // ---------- FSM --------------
-//FSM registers
-reg [2:0] state, state_next;
-reg s_axis_tready_next, s_axis_tready_fsm;
-reg m_axis_tlast_next;
-localparam RESET = 0;
-localparam FEED = 1;
-localparam PAD = 2;
-localparam EXTRA_PAD = 3;
-localparam WAIT = 4;
 
 // FSM transitions
 always @(*) begin
