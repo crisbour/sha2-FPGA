@@ -138,7 +138,7 @@ class Sha1:
         digest = b''
         if to_digest:
             for i in range(self.output_size):
-                word_bytes = to_digest[i*self._max_word_length:(i+1)*self._max_output_words]
+                word_bytes = to_digest[i*8:(i+1)*8]
                 word, = struct.unpack('!I',word_bytes)
                 word = word & self.mod_mask
                 digest = digest + struct.pack('!I',word)

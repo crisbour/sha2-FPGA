@@ -29,12 +29,19 @@ DATA_BIT_WIDTH = 512
 DATA_BYTE_WIDTH = 64
 PAD_BYTES = 9
 
+def little_endian_codec(codec):
+    if(codec >= 0x80):
+        codec = codec<<8 | codec >>8;
+    return "{0:016b}".format(codec)
+
 class HashEngineTB(object):
 
-    def __init__(self, dut, sha_type, debug=False):
-        dut._log.info(f"Preparing tb for hashing-engine, sha_type={Sha.resolve_name(sha_type)}")
+    def __init__(self, dut, codec, debug=False):
+        dut._log.info(f"Preparing tb for hashing-engine, codec={Sha.resolve_name(codec)}")
         self.dut = dut
-        self.sha_type = sha_type    # sha_type_actual
+        self.codec = codec    # sha_type_actual
+        self.sha = Sha.get_method(codec)
+
         self.s_axis = AXIS_Driver(dut, "s_axis", dut.axis_aclk)
         self.backpressure = BitDriver(dut.m_axis_tready, dut.axis_aclk)
         self.m_axis = AXIS_Monitor(dut, "m_axis", dut.axis_aclk)
@@ -70,12 +77,12 @@ class HashEngineTB(object):
         # sha = hashlib.sha256()
         # sha.update(message)
         # digest = sha.digest()    
-        sha = Sha(self.sha_type)
-        sha.padder(message)
-        sha.wt_transaction()
-        digest = sha.digest()
+        self.sha.init()
+        self.sha.padder(message)
+        self.sha.wt_transaction()
+        digest = self.sha.digest()
 
-        self.expected_output.append({'data': digest,'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
+        self.expected_output.append({'data': digest,'user':80*'0'+little_endian_codec(self.codec)+32*'0'})
 
 def random_message(min_size=1, max_size=400, npackets=4):
     """random string data of a random length"""
@@ -83,14 +90,14 @@ def random_message(min_size=1, max_size=400, npackets=4):
         yield get_bytes(random.randint(min_size, max_size), random_data())
 
 
-async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None):
+async def run_test(dut, codec=0x12, data_in=None, backpressure_inserter=None):
     dut.m_axis_tready <= 0
     #dut.log.setLevel(logging.DEBUG)
 
     """ Setup testbench and run a test. """
     clock = Clock(dut.axis_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
     cocotb.fork(clock.start())  # Start the clock
-    tb = HashEngineTB(dut, sha_type, False) # Debug=False
+    tb = HashEngineTB(dut, codec, False) # Debug=False
 
     await tb.reset()
     dut.m_axis_tready <= 1
@@ -102,7 +109,7 @@ async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None)
 
     # Send in the packets
     for transaction in data_in():
-        tb.s_axis.bus.tuser <= BinaryValue(94*'0'+"{0:02b}".format(sha_type)+32*'0')
+        tb.s_axis.bus.tuser <= BinaryValue(80*'0'+little_endian_codec(codec)+32*'0')
         await tb.s_axis.send(transaction)
 
     # Wait for all transactions to be received
@@ -121,7 +128,7 @@ async def run_test(dut, data_in=None, sha_type=None, backpressure_inserter=None)
 
 # Register the test.
 factory = TestFactory(run_test)
-factory.add_option("sha_type", [0,1,2,3])
+factory.add_option("codec", [0x12,0x13,0x09,0x10])
 factory.add_option("data_in", [random_message])
 factory.add_option("backpressure_inserter", 
                     [None, random_50_percent])

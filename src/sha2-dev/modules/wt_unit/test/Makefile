@@ -25,9 +25,11 @@ COMPILE_ARGS+=+incdir+$(SHADIR)/headers/
 endif
 
 # DUT
-VERILOG_SOURCES = $(TOPDIR)/hdl/wt_unit.v
+VERILOG_SOURCES = $(TOPDIR)/hdl/wt_unit_tb.v
+VERILOG_SOURCES += $(TOPDIR)/hdl/bridge.v
 VERILOG_SOURCES += $(SHADIR)/headers/multiformats_codec.vh
-TOPLEVEL = wt_unit
+VERILOG_SOURCES += $(TOPDIR)/hdl/wt_unit.v
+TOPLEVEL = wt_unit_tb
 
 export TOPLEVEL_LANG
 MODULE = wt_unit_cocotb

@@ -20,14 +20,29 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module wt_unit_tb;
+module wt_unit_tb #(
+	parameter C_S_AXIS_DATA_WIDTH = 512,
+	parameter C_AXIS_TUSER_WIDTH = 128
+)
+(
+	input 	axis_aclk,
+    input	axis_resetn,
 
-// Parameters
-parameter CLK_PERIOD = 10;
-parameter P_M_AXIS_DATA_WIDTH = 64;
-parameter DATA_WORD_REG_WIDTH = 64;
-parameter P_S_AXIS_DATA_WIDTH = 512;
-parameter DATA_BLOCK_REG_WIDTH = 512;
+    // Master Stream Port
+    input [(C_S_AXIS_DATA_WIDTH-1):0] s_axis_tdata,
+	input [(C_AXIS_TUSER_WIDTH-1):0] s_axis_tuser,
+    input s_axis_tvalid,
+    output s_axis_tready,
+    input s_axis_tlast,
+
+    // Slave Stream Port
+    output [63:0] m_axis_tdata,
+	output [(C_AXIS_TUSER_WIDTH-1):0] m_axis_tuser,
+    output m_axis_tvalid,
+    input m_axis_tready,
+    output m_axis_tlast	
+);
+
 
 function integer log2;
     input integer number;
@@ -39,109 +54,59 @@ function integer log2;
     end
 endfunction // log2
 
-// Signals generated
-reg clk, reset;
-reg en;
+wire [(C_S_AXIS_DATA_WIDTH-1):0] wt_axis_tdata;
+wire [C_AXIS_TUSER_WIDTH-1:0] wt_axis_tuser;
+wire wt_axis_tvalid;
+wire wt_axis_tready;
+wire wt_axis_tlast;
 
-// Receiving AXI4-Stream
-reg [P_S_AXIS_DATA_WIDTH-1 : 0] r_tdata;
-wire [DATA_BLOCK_REG_WIDTH/8 - 1 : 0] r_tkeep;
-wire r_tvalid;
-wire r_tready;
-wire r_tlast;
 
-// Transmitting AXI4-Stream
-wire [P_M_AXIS_DATA_WIDTH-1 : 0] t_tdata;
-wire t_tvalid;
-reg t_tready;
-wire t_tlast;
+bridge #(
+	.C_AXIS_DATA_WIDTH(512),
+	.C_AXIS_TUSER_WIDTH(128)
+) big_endian(
+	.clk	(axis_aclk),
+	.reset	(~axis_resetn),
 
-// Testing registers
-reg [P_S_AXIS_DATA_WIDTH-1 : 0] modify;
-reg [7:0] valid;
-reg [7:0] last;
-reg [63:0] keep;
-reg finished;
+	// Little endian input stream
+	.s_axis_tdata	(s_axis_tdata),
+	.s_axis_tkeep	(),
+	.s_axis_tuser	(s_axis_tuser),
+    .s_axis_tvalid	(s_axis_tvalid),
+    .s_axis_tready	(s_axis_tready),
+    .s_axis_tlast	(s_axis_tlast),
 
-// Clock generation
-initial begin
-	clk = 0;
-	forever
-		# (CLK_PERIOD/2) clk = ~clk;
-end
-
-initial begin
-	// Set testing vectors
-	modify = 512'b1;
-	valid = 8'b11010011;
-	last = 8'b10000000;
-	keep = {16{1'b1}};
-	
-	finished = 0;
-end
-
-assign r_tvalid = valid[0];
-assign r_tlast = last[0];
-assign r_tkeep = r_tlast ? keep : {64{1'b1}};
-
-initial begin
-	r_tdata = 1;
-	t_tready = 1;
-	reset = 1;
-	en = 1;
-	#(CLK_PERIOD/2);
-	reset = 0;
-	forever begin
-		#CLK_PERIOD
-		if(r_tready) begin
-		
-			valid <= valid >> 1;
-			last <= last >> 1;
-			if(r_tvalid) begin
-				modify <= modify << 64;
-				r_tdata <= r_tdata | (modify << 64);
-			end
-			
-			if(r_tlast) begin
-			    finished <= 1;
-			end
-		end
-	end
-
-end
-
-initial begin
-    forever begin
-    #CLK_PERIOD;
-    if(finished) begin
-    #(4*CLK_PERIOD)
-        $display("**Test Finished! **\n");
-        $finish;
-    end
-    end
-end
+	// Big endian output stream
+	.m_axis_tdata	(wt_axis_tdata),
+	.m_axis_tkeep	(),
+	.m_axis_tuser	(wt_axis_tuser),
+    .m_axis_tvalid	(wt_axis_tvalid),
+    .m_axis_tready	(wt_axis_tready),
+    .m_axis_tlast	(wt_axis_tlast)
+);
 
 
 
-wt_unit wt_ut(
-	.axis_aclk		(clk),
-    .axis_resetn		(~reset),
-
-    // Control
-    .sha_type		(2'b00),  // 0 if SHA256 and 1 if SHA512 or SHA384
-    .en 			(1'b1),   // 1 if the hashing engine has been enabled by the scheduler
+wt_unit #(
+	.C_M_AXIS_DATA_WIDTH(64),
+	.C_AXIS_TUSER_WIDTH(128)
+) wt_ut(
+	.axis_aclk		(axis_aclk),
+    .axis_resetn	(axis_resetn),
 
     // Master Stream Port
-    .m_axis_tdata	(t_tdata),
-    .m_axis_tvalid	(t_tvalid),
-    .m_axis_tready	(t_tready),
-    .m_axis_tlast	(t_tlast),
+    .s_axis_tdata	(wt_axis_tdata),
+	.s_axis_tuser	(wt_axis_tuser),
+    .s_axis_tvalid	(wt_axis_tvalid),
+    .s_axis_tready	(wt_axis_tready),
+    .s_axis_tlast	(wt_axis_tlast),
 
     // Slave Stream Port
-    .s_axis_tdata	(r_tdata),
-    .s_axis_tvalid	(r_tvalid),
-    .s_axis_tready	(r_tready),
-    .s_axis_tlast	(r_tlast)
+    .m_axis_tdata	(m_axis_tdata),
+	.m_axis_tuser	(m_axis_tuser),
+    .m_axis_tvalid	(m_axis_tvalid),
+    .m_axis_tready	(m_axis_tready),
+    .m_axis_tlast	(m_axis_tlast)
 	);
 
 

@@ -18,7 +18,7 @@
 // Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
-
+`include "multiformats_codec.vh"
 `define HARD_WIRED
 module digest
 #(
@@ -61,10 +61,6 @@ localparam AXIS_DATA_BYTES = C_M_AXIS_DATA_WIDTH/8;
 localparam REG_WIDTH = 64;
 localparam WORD_WIDTH = 32;
 
-localparam SHA224 = 2'b00 ;
-localparam SHA256 = 2'b01 ;
-localparam SHA384 = 2'b10 ;
-localparam SHA512 = 2'b11 ;
 
 wire reset;
 assign reset = ~axis_resetn;
@@ -73,8 +69,38 @@ wire [C_M_AXIS_DATA_WIDTH - 1 : 0] hash256;
 wire [C_M_AXIS_DATA_WIDTH - 1 : 0] hash512;
 
 wire [1:0] sha_type;
-assign sha_type = s_axis_tuser[TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET+1:
-                                TUSER_SLOT_WIDTH*HASH_TUSER_SLOT+TUESR_SLOT_OFFSET+SHA_TUSER_OFFSET];
+wire [15:0] codec;
+
+// ---------- Hash identification -----------------
+function [15:0] extract_codec;
+    input [C_M_AXIS_TUSER_WIDTH-1:0] tuser;
+    begin
+        if(tuser[`CODEC_POS + 7: `CODEC_POS] >= 8'h80) 
+            extract_codec = {tuser[`CODEC_POS+7: `CODEC_POS],tuser[`CODEC_POS+15: `CODEC_POS+8]};
+        else
+            extract_codec = tuser[`CODEC_POS + 15: `CODEC_POS];
+    end
+
+endfunction
+
+// Bit 0 signifies if the codec is supported
+// Bit 1 signifies whether it is a 512 or 1024 block based sha hash. Supports sha1 and sha2
+function [1:0] codec2sha_type;
+    input [15:0] codec;
+    begin
+        case(codec)
+            `CODEC_SHA2_224:    codec2sha_type = 2'b00;
+            `CODEC_SHA2_256:    codec2sha_type = 2'b01;
+            `CODEC_SHA2_384:    codec2sha_type = 2'b10;
+            `CODEC_SHA2_512:    codec2sha_type = 2'b11;
+            default:            codec2sha_type = 2'b00;
+        endcase
+    end
+endfunction
+
+// Logic
+assign codec = extract_codec(s_axis_tuser);
+assign sha_type = codec2sha_type(codec);
 
 // ---------- Reset State: Task -------
 task reset_task();
@@ -118,15 +144,17 @@ always @(posedge axis_aclk) begin
                     m_axis_tdata <= hash512;
             end
 
-            case (sha_type)
-                SHA224:
+            case (codec)
+                `CODEC_SHA2_224:
                     m_axis_tkeep <= {{36{1'b0}},{28{1'b1}}};
-                SHA256:
+                `CODEC_SHA2_256:
                     m_axis_tkeep <= {{32{1'b0}},{32{1'b1}}};
-                SHA384:
+                `CODEC_SHA2_384:
                     m_axis_tkeep <= {{16{1'b0}},{48{1'b1}}};
-                SHA512:
+                `CODEC_SHA2_512:
                     m_axis_tkeep <= {64{1'b1}}; 
+                default:
+                    m_axis_tkeep <= 0;
             endcase
         end
         if(m_axis_tvalid & m_axis_tready)begin

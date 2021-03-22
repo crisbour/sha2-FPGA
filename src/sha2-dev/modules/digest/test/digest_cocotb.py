@@ -29,11 +29,17 @@ with warnings.catch_warnings():
 DATA_BIT_WIDTH = 512
 DATA_BYTE_WIDTH = int(DATA_BIT_WIDTH/8)
 
+def little_endian_codec(codec):
+    if(codec >= 0x80):
+        codec = codec<<8 | codec >>8;
+    return "{0:016b}".format(codec)
+
 class DigestTB(object):
 
-    def __init__(self, dut, sha_type, debug=False):
+    def __init__(self, dut, codec, debug=False):
         self.dut = dut
-        self.sha_type = sha_type	# Set it to SHA224/256
+        self.codec = codec
+        self.sha = Sha.get_method(codec)
         
         self.dut._log.info("Configure driver, monitors and scoreboard")
         self.s_axis = AXIS_Driver(dut, "s_axis", dut.axis_aclk, lsb_first=False)
@@ -67,9 +73,9 @@ class DigestTB(object):
         message = transaction['data']
         #print(f'Transaction = {transaction}')
         print(message)
-        sha=Sha(self.sha_type)
-        digest = sha.digest(message)
-        self.expected_output.append({'data': digest,'user':94*'0'+"{0:02b}".format(self.sha_type)+32*'0'})
+        self.sha.init()
+        digest = self.sha.digest(message)
+        self.expected_output.append({'data': digest,'user':80*'0'+little_endian_codec(self.codec)+32*'0'})
         #print(f'Expected digest = {digest}')
         #self.dut._log.debug("Message block received: {}".format(buffer[0:DATA_BYTE_WIDTH]))
 
@@ -77,16 +83,17 @@ def random_hash(npackets=5):
     """random string data of a random length"""
     for _ in range(npackets):
         yield get_bytes(64, random_data())
+        
 
 
-async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None):
+async def run_test(dut, codec=None, data_in=None, backpressure_inserter=None):
     dut.m_axis_tready <= 0
     #dut.log.setLevel(logging.DEBUG)
 
     """ Setup testbench and run a test. """
     clock = Clock(dut.axis_aclk, 10, units="ns")  # Create a 10ns period clock on port clk
     cocotb.fork(clock.start())  # Start the clock
-    tb = DigestTB(dut, sha_type, True)
+    tb = DigestTB(dut, codec, True)
 
     await tb.reset()
     dut.m_axis_tready <= 1
@@ -96,7 +103,7 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
 
     # Send in the packets
     for transaction in data_in():
-        tb.s_axis.bus.tuser <= BinaryValue(94*'0'+"{0:02b}".format(sha_type)+32*'0')
+        tb.s_axis.bus.tuser <= BinaryValue(80*'0'+little_endian_codec(codec)+32*'0')
         await tb.s_axis.send(transaction)
 
     # Wait for last transmission
@@ -112,7 +119,7 @@ async def run_test(dut, data_in=None, sha_type=0b01, backpressure_inserter=None)
 # Register the test.
 factory = TestFactory(run_test)
 factory.add_option("data_in", [random_hash])
-factory.add_option("sha_type", [0,1,2,3])
+factory.add_option("codec", [0x12,0x13,0x09,0x10])
 # factory.add_option("backpressure_inserter", 
 #                    [None, random_50_percent])
 factory.generate_tests()

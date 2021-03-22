@@ -72,16 +72,16 @@ class HcuTb(object):
         message = transaction['data']
         # print(f'Length or received tansaction = {len(message)}')
         self.sha.init()
-        words_block = sha.wt_iters
+        words_block = self.sha.wt_iters
         while(message):
             for i in range(words_block):
                 # print(f'Word to unpack: {message[i*BYTE_WIDTH_WORDS:(i+1)*BYTE_WIDTH_WORDS]}')
                 w_temp, = struct.unpack('!Q', message[i*BYTE_WIDTH_WORDS:(i+1)*BYTE_WIDTH_WORDS])
-                sha.update(w_temp)
+                self.sha.update(w_temp)
             message = message[BYTE_WIDTH_WORDS*words_block:]
         
-        self.dut._log.debug(f'Hash Computed = {[hex(reg) for  reg in sha.get_hash()]}')
-        self.expected_output.append({'data': sha.get_bytes_hash(), 'user':80*'0'+little_endian_codec(self.codec)+32*'0'})
+        self.dut._log.debug(f'Hash Computed = {[hex(reg) for  reg in self.sha.get_hash()]}')
+        self.expected_output.append({'data': self.sha.get_bytes_hash(), 'user':80*'0'+little_endian_codec(self.codec)+32*'0'})
 
 def random_wt(word_size) -> Iterator[int]:
     wt_empty_bytes = BYTE_WIDTH_WORDS - word_size

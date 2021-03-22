@@ -1,4 +1,4 @@
-DEV_DIR = ./
+DEV_DIR = ./modules
 
 clean:
 	@find . -type f -name 'results.xml' -delete

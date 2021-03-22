@@ -2,9 +2,10 @@
 TOPLEVEL_LANG = verilog
 
 PWD=$(shell pwd)
-TOPDIR=$(PWD)/../..
+TOPDIR=$(PWD)/..
+SHADIR=$(TOPDIR)/../..
 
-export PYTHONPATH := $(PWD)/../../:$(PYTHONPATH)
+export PYTHONPATH := $(SHADIR)/model:$(PYTHONPATH)
 
 SIM ?= verilator
 
@@ -17,13 +18,16 @@ endif
 #not sure if only icarus include is by -I ...
 ifeq ($(SIM),icarus)
 COMPILE_ARGS+=-I$(TOPDIR)/hdl/
+COMPILE_ARGS+=-I$(SHADIR)/headers
 else
 COMPILE_ARGS+=+incdir+$(TOPDIR)/hdl/
+COMPILE_ARGS+=+incdir+$(SHADIR)/headers
 endif
 
 # DUT
-VERILOG_SOURCES = $(PWD)/../hdl/digest.v
-VERILOG_SOURCES += $(PWD)/../hdl/big_endian.v
+VERILOG_SOURCES = $(TOPDIR)/hdl/digest.v
+VERILOG_SOURCES += $(TOPDIR)/hdl/big_endian.v
+
 TOPLEVEL = digest
 MODULE = digest_cocotb
 
