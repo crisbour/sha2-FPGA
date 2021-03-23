@@ -137,6 +137,8 @@ reg [NUM_BYTES_WIDTH-1:0] next_byte;
 
 reg [63:0] length_low;
 reg [63:0] length_high;   // Theoretically used only for SHA384/512, practically never
+reg [63:0] new_length_low;
+reg [63:0] new_length_high;   // Theoretically used only for SHA384/512, practically never
 reg reg_count;
 wire reset;
 wire [1:0] sha_type;
@@ -352,15 +354,27 @@ end
 */
 
 // Count length of padded message
-task count_message;
-    input [63:0] length_inc;
-    begin
-        length_low = length_low + length_inc;
-        if(length_low == 0)begin
-            length_high = length_high + 1;
-        end
+always @(*) begin
+    if(s_axis_tlast)begin
+        new_length_low = length_low + (({58'b0,last_valid_byte} + 1) << 3);
     end
-endtask : count_message
+    else begin  // Write tdata to R_reg and raise the flag for a new register
+        new_length_low = length_low + DATA_BLOCK_REG_WIDTH;
+    end
+    if(new_length_low == 0)begin
+        new_length_low = 0;
+        new_length_high = length_high + 1;
+    end
+    else
+        new_length_high = length_high;
+end
+
+task update_length;
+    begin
+        length_low  <= new_length_low;
+        length_high <= new_length_high;
+    end
+endtask : update_length
 
 //Padding step
 always @(*) begin
@@ -378,6 +392,7 @@ always @(*) begin
     end
 end
 
+
 // Feed R_reg
 always @(posedge axis_aclk) begin
     if(reset) begin
@@ -392,8 +407,8 @@ always @(posedge axis_aclk) begin
             RESET: begin
                 bom <= 1;
                 reg_status <= 2'b00;
-                length_low = 0;
-                length_high = 0;
+                length_low <= 0;
+                length_high <= 0;
                 reg_count <= 0;
             end
 
@@ -409,7 +424,7 @@ always @(posedge axis_aclk) begin
                             // Write tdata to R_reg
                             R_reg <= s_axis_tdata;
                             next_byte <= last_valid_byte + 1;
-                            count_message(({58'b0,last_valid_byte} + 1) * 8);
+                            update_length();
                             if(last_valid_byte + 1 == 64) begin    // If there weren't any null bytes in the last frame
                                 reg_status <= reg_status_actual | 2'b01;
                                 reg_count <= ~reg_count;
@@ -421,7 +436,7 @@ always @(posedge axis_aclk) begin
                             R_reg <= s_axis_tdata;
                             reg_status <= reg_status_actual | 2'b01;
                             reg_count <= ~reg_count;
-                            count_message(DATA_BLOCK_REG_WIDTH);
+                            update_length();
                         end
                     end
                     else begin  // No message block has been received
