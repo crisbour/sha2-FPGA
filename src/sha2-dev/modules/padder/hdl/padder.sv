@@ -78,7 +78,7 @@ begin
     big_endian[7 : 0] = length_value[63:56];
 end
 `else
-integer byte;
+genvar byte;
 for(byte=0;byte<8;byte=byte+1)begin
     big_endian[(8-byte)*8-1:(7-byte)*8] = length_value[8*(byte+1)-1:8*byte];
 end
@@ -127,6 +127,7 @@ localparam LEN_FIELD_WIDTH = 8 * LEN_FIELD_BYTES;
 reg [DATA_BLOCK_REG_WIDTH-1:0] R_reg;
 reg [DATA_BLOCK_REG_WIDTH-1:0] L_reg;
 reg [DATA_BLOCK_REG_WIDTH-1:0] pad;
+reg [DATA_BLOCK_REG_WIDTH-1:0] extra_pad;
 reg [1:0] reg_status;
 wire [1:0] reg_status_actual;
 
@@ -390,7 +391,19 @@ always @(*) begin
         end
 
     end
+    pad = (R_reg & ((1<<(8 * next_byte)) - 1)) | pad;
 end
+
+// Extra padding
+always @(*) begin
+    if(sha_type[1]) begin
+        extra_pad = {{384{1'b0}},big_endian(length_low),big_endian(length_high)}  
+                        << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * 2);
+    end else begin
+        extra_pad = {{448{1'b0}},big_endian(length_low)} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
+    end
+end
+
 
 
 // Feed R_reg
@@ -447,7 +460,7 @@ always @(posedge axis_aclk) begin
 
             PAD: begin
                 if(~reg_status_actual[0])begin   // If R_reg is not completed or if it will be propagated at the next clock edge, then we can carry on with padding
-                    R_reg <= (R_reg & ((1<<(8 * next_byte)) - 1)) | pad;
+                    R_reg <= pad;
                     reg_status <= reg_status_actual | 2'b01;
                     next_byte <= 0;
                     reg_count <= ~reg_count;
@@ -461,12 +474,7 @@ always @(posedge axis_aclk) begin
                     end else begin // Then pad with 0's and append the length value
                         // Length is written in big-endian format
                         // I assumed the length will never surprass 2^64-1, which is a reasonable assumption
-                        if(sha_type[1]) begin
-                            R_reg <= {{384{1'b0}},big_endian(length_low),big_endian(length_high)}  
-                                            << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * 2);
-                        end else begin
-                            R_reg <= {{448{1'b0}},big_endian(length_low)} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
-                        end
+                        R_reg <= extra_pad;
                         reg_count <= ~reg_count;
                     end
                     reg_status <= reg_status_actual | 2'b01;
