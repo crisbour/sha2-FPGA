@@ -362,6 +362,22 @@ task count_message;
     end
 endtask : count_message
 
+//Padding step
+always @(*) begin
+    pad = 512'h80 << (8 * next_byte);
+    if(complete) begin // If the length fits, then pad with 0s all but the length bytes and assert tlast
+        // If the length doesn't fit in the padding, just pad with 0s the rest and go to next block
+        // Length is written in big-endian format
+        if(sha_type[1]) begin
+            pad = pad | {{384{1'b0}},big_endian(length_low),big_endian(length_high)} 
+                            << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * 2);
+        end else begin
+            pad = pad | {{448{1'b0}},big_endian(length_low)} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
+        end
+
+    end
+end
+
 // Feed R_reg
 always @(posedge axis_aclk) begin
     if(reset) begin
@@ -416,18 +432,6 @@ always @(posedge axis_aclk) begin
 
             PAD: begin
                 if(~reg_status_actual[0])begin   // If R_reg is not completed or if it will be propagated at the next clock edge, then we can carry on with padding
-                    pad = 512'h80 << (8 * next_byte);
-                    if(complete) begin // If the length fits, then pad with 0s all but the length bytes and assert tlast
-                        // If the length doesn't fit in the padding, just pad with 0s the rest and go to next block
-                        // Length is written in big-endian format
-                        if(sha_type[1]) begin
-                            pad = pad | {{384{1'b0}},big_endian(length_low),big_endian(length_high)} 
-                                            << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * 2);
-                        end else begin
-                            pad = pad | {{448{1'b0}},big_endian(length_low)} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
-                        end
-
-                    end
                     R_reg <= (R_reg & ((1<<(8 * next_byte)) - 1)) | pad;
                     reg_status <= reg_status_actual | 2'b01;
                     next_byte <= 0;
