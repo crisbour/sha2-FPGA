@@ -163,23 +163,6 @@ assign reset_hash = (state == RESET);
 assign update_hash = (state == UPDATE_HASH);
 
 
-initial begin
-    m_axis_tvalid = 0;
-    s_axis_tready = 0;
-end
-
-// ---------- Reset State: Task -------
-task reset_task();
-begin
-
-    m_axis_tlast <= 0;
-
-    finish <= 0;
-    word_count <= 0;
-
-end
-endtask
-
 // ---------- FSM --------------
 
 // FSM transitions
@@ -228,9 +211,9 @@ always @(posedge axis_aclk)
 begin
     if(reset) begin
         state <= RESET;
-        m_axis_tvalid <= 0;
         s_axis_tready <= 0;
-        reset_task();
+        m_axis_tvalid <= 0;
+        m_axis_tlast <= 0;
     end else begin
         state <= state_next;
         s_axis_tready <= s_axis_tready_next;
@@ -240,10 +223,16 @@ begin
 end
 
 always @(posedge axis_aclk) begin
+    if(reset) begin
+        word_count <= 0;
+        finish <= 0;
+    end
     if(~reset) begin
         case(state)
             RESET: begin
-                reset_task();
+                word_count <= 0;
+                finish <= 0;
+                m_axis_tlast <= 0;
                 m_axis_tuser <= s_axis_tuser;
             end
 

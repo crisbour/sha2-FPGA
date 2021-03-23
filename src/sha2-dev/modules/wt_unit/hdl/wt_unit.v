@@ -241,6 +241,9 @@ end
 always @(posedge axis_aclk)
 begin: FSM_SEQ
     if(reset) begin
+        state <= IDLE;
+        s_axis_tready <= 0;
+        m_axis_tvalid <= 0;
         // reset_task();
     end else begin
         state <= state_next;
@@ -251,11 +254,7 @@ end
 
 always @(posedge axis_aclk) begin
     if(reset) begin
-        state <= IDLE;
-
         m_axis_tlast <= 0;
-        m_axis_tvalid <= 0;
-        s_axis_tready <= 0;
         m_axis_tuser <= 0;
 
         finish <= 0;
