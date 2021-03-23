@@ -133,8 +133,9 @@ wire [1:0] reg_status_actual;
 
 reg [NUM_BYTES_WIDTH-1:0] shift_inc;
 reg [NUM_BYTES_WIDTH-1:0] shift_measure;
-reg [NUM_BYTES_WIDTH-1:0] last_valid_byte;
+reg [NUM_BYTES_WIDTH:0] valid_bytes;
 reg [NUM_BYTES_WIDTH-1:0] next_byte;
+reg [NUM_BYTES_WIDTH+2:0] next_bit;
 
 reg [63:0] length_low;
 reg [63:0] length_high;   // Theoretically used only for SHA384/512, practically never
@@ -174,8 +175,8 @@ assign last_received = s_axis_tlast & s_axis_tready & s_axis_tvalid;
 
 // Complete when there are available 
 // 9 bytes (8bytes len and 1 byte = x80) for SHA256 or 17 bytes for SHA384/512
-assign complete = ~reg_status_actual[0] & (reg_count | ~sha_type[1]) 
-                & (next_byte < 56 - 8*sha_type[1]);
+assign complete = sha_type[1]? ~reg_status_actual[0] & (reg_count | ~sha_type[1]) && next_byte < 48 :
+                    ~reg_status_actual[0] & (reg_count | ~sha_type[1]) && next_byte < 56;
 
 
 //FSM registers
@@ -207,78 +208,78 @@ end
 // always_latch begin
 //     for(by=0;by<AXIS_TKEEP_WIDTH;by=by+1) begin
 //         if(s_axis_tkeep == {{(AXIS_TKEEP_WIDTH-by-1){1'b0}},{(by+1){1'b1}}})
-//             last_valid_byte = by[5:0];
+//             valid_bytes = by[5:0];
             
 //     end
 // end
 always @(*) begin
     // encode FIFO IN (8b->4b)
           case (s_axis_tkeep)
-              64'h1                : last_valid_byte = 6'h0;
-              64'h3                : last_valid_byte = 6'h1;
-              64'h7                : last_valid_byte = 6'h2;
-              64'hF                : last_valid_byte = 6'h3;
-              64'h1F               : last_valid_byte = 6'h4;
-              64'h3F               : last_valid_byte = 6'h5;
-              64'h7F               : last_valid_byte = 6'h6;
-              64'hFF               : last_valid_byte = 6'h7;
-              64'h1FF              : last_valid_byte = 6'h8;
-              64'h3FF              : last_valid_byte = 6'h9;
-              64'h7FF              : last_valid_byte = 6'ha;
-              64'hFFF              : last_valid_byte = 6'hb;
-              64'h1FFF             : last_valid_byte = 6'hc;
-              64'h3FFF             : last_valid_byte = 6'hd;
-              64'h7FFF             : last_valid_byte = 6'he;
-              64'hFFFF             : last_valid_byte = 6'hf;
-              64'h1FFFF            : last_valid_byte = 6'h10;
-              64'h3FFFF            : last_valid_byte = 6'h11;
-              64'h7FFFF            : last_valid_byte = 6'h12;
-              64'hFFFFF            : last_valid_byte = 6'h13;
-              64'h1FFFFF           : last_valid_byte = 6'h14;
-              64'h3FFFFF           : last_valid_byte = 6'h15;
-              64'h7FFFFF           : last_valid_byte = 6'h16;
-              64'hFFFFFF           : last_valid_byte = 6'h17;
-              64'h1FFFFFF          : last_valid_byte = 6'h18;
-              64'h3FFFFFF          : last_valid_byte = 6'h19;
-              64'h7FFFFFF          : last_valid_byte = 6'h1a;
-              64'hFFFFFFF          : last_valid_byte = 6'h1b;
-              64'h1FFFFFFF         : last_valid_byte = 6'h1c;
-              64'h3FFFFFFF         : last_valid_byte = 6'h1d;
-              64'h7FFFFFFF         : last_valid_byte = 6'h1e;
-              64'hFFFFFFFF         : last_valid_byte = 6'h1f;
-              64'h1_FFFFFFFF       : last_valid_byte = 6'h20;
-              64'h3_FFFFFFFF       : last_valid_byte = 6'h21;
-              64'h7_FFFFFFFF       : last_valid_byte = 6'h22;
-              64'hF_FFFFFFFF       : last_valid_byte = 6'h23;
-              64'h1F_FFFFFFFF      : last_valid_byte = 6'h24;
-              64'h3F_FFFFFFFF      : last_valid_byte = 6'h25;
-              64'h7F_FFFFFFFF      : last_valid_byte = 6'h26;
-              64'hFF_FFFFFFFF      : last_valid_byte = 6'h27;
-              64'h1FF_FFFFFFFF     : last_valid_byte = 6'h28;
-              64'h3FF_FFFFFFFF     : last_valid_byte = 6'h29;
-              64'h7FF_FFFFFFFF     : last_valid_byte = 6'h2a;
-              64'hFFF_FFFFFFFF     : last_valid_byte = 6'h2b;
-              64'h1FFF_FFFFFFFF    : last_valid_byte = 6'h2c;
-              64'h3FFF_FFFFFFFF    : last_valid_byte = 6'h2d;
-              64'h7FFF_FFFFFFFF    : last_valid_byte = 6'h2e;
-              64'hFFFF_FFFFFFFF    : last_valid_byte = 6'h2f;
-              64'h1FFFF_FFFFFFFF   : last_valid_byte = 6'h30;
-              64'h3FFFF_FFFFFFFF   : last_valid_byte = 6'h31;
-              64'h7FFFF_FFFFFFFF   : last_valid_byte = 6'h32;
-              64'hFFFFF_FFFFFFFF   : last_valid_byte = 6'h33;
-              64'h1FFFFF_FFFFFFFF  : last_valid_byte = 6'h34;
-              64'h3FFFFF_FFFFFFFF  : last_valid_byte = 6'h35;
-              64'h7FFFFF_FFFFFFFF  : last_valid_byte = 6'h36;
-              64'hFFFFFF_FFFFFFFF  : last_valid_byte = 6'h37;
-              64'h1FFFFFF_FFFFFFFF : last_valid_byte = 6'h38;
-              64'h3FFFFFF_FFFFFFFF : last_valid_byte = 6'h39;
-              64'h7FFFFFF_FFFFFFFF : last_valid_byte = 6'h3a;
-              64'hFFFFFFF_FFFFFFFF : last_valid_byte = 6'h3b;
-              64'h1FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3c;
-              64'h3FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3d;
-              64'h7FFFFFFF_FFFFFFFF: last_valid_byte = 6'h3e;
-              64'hFFFFFFFF_FFFFFFFF: last_valid_byte = 6'h3f;
-              default:  last_valid_byte = 6'h00;
+              64'h1                : valid_bytes = 7'h1;
+              64'h3                : valid_bytes = 7'h2;
+              64'h7                : valid_bytes = 7'h3;
+              64'hF                : valid_bytes = 7'h4;
+              64'h1F               : valid_bytes = 7'h5;
+              64'h3F               : valid_bytes = 7'h6;
+              64'h7F               : valid_bytes = 7'h7;
+              64'hFF               : valid_bytes = 7'h8;
+              64'h1FF              : valid_bytes = 7'h9;
+              64'h3FF              : valid_bytes = 7'ha;
+              64'h7FF              : valid_bytes = 7'hb;
+              64'hFFF              : valid_bytes = 7'hc;
+              64'h1FFF             : valid_bytes = 7'hd;
+              64'h3FFF             : valid_bytes = 7'he;
+              64'h7FFF             : valid_bytes = 7'hf;
+              64'hFFFF             : valid_bytes = 7'h10;
+              64'h1FFFF            : valid_bytes = 7'h11;
+              64'h3FFFF            : valid_bytes = 7'h12;
+              64'h7FFFF            : valid_bytes = 7'h13;
+              64'hFFFFF            : valid_bytes = 7'h14;
+              64'h1FFFFF           : valid_bytes = 7'h15;
+              64'h3FFFFF           : valid_bytes = 7'h16;
+              64'h7FFFFF           : valid_bytes = 7'h17;
+              64'hFFFFFF           : valid_bytes = 7'h18;
+              64'h1FFFFFF          : valid_bytes = 7'h19;
+              64'h3FFFFFF          : valid_bytes = 7'h1a;
+              64'h7FFFFFF          : valid_bytes = 7'h1b;
+              64'hFFFFFFF          : valid_bytes = 7'h1c;
+              64'h1FFFFFFF         : valid_bytes = 7'h1d;
+              64'h3FFFFFFF         : valid_bytes = 7'h1e;
+              64'h7FFFFFFF         : valid_bytes = 7'h1f;
+              64'hFFFFFFFF         : valid_bytes = 7'h20;
+              64'h1_FFFFFFFF       : valid_bytes = 7'h21;
+              64'h3_FFFFFFFF       : valid_bytes = 7'h22;
+              64'h7_FFFFFFFF       : valid_bytes = 7'h23;
+              64'hF_FFFFFFFF       : valid_bytes = 7'h24;
+              64'h1F_FFFFFFFF      : valid_bytes = 7'h25;
+              64'h3F_FFFFFFFF      : valid_bytes = 7'h26;
+              64'h7F_FFFFFFFF      : valid_bytes = 7'h27;
+              64'hFF_FFFFFFFF      : valid_bytes = 7'h28;
+              64'h1FF_FFFFFFFF     : valid_bytes = 7'h29;
+              64'h3FF_FFFFFFFF     : valid_bytes = 7'h2a;
+              64'h7FF_FFFFFFFF     : valid_bytes = 7'h2b;
+              64'hFFF_FFFFFFFF     : valid_bytes = 7'h2c;
+              64'h1FFF_FFFFFFFF    : valid_bytes = 7'h2d;
+              64'h3FFF_FFFFFFFF    : valid_bytes = 7'h2e;
+              64'h7FFF_FFFFFFFF    : valid_bytes = 7'h2f;
+              64'hFFFF_FFFFFFFF    : valid_bytes = 7'h30;
+              64'h1FFFF_FFFFFFFF   : valid_bytes = 7'h31;
+              64'h3FFFF_FFFFFFFF   : valid_bytes = 7'h32;
+              64'h7FFFF_FFFFFFFF   : valid_bytes = 7'h33;
+              64'hFFFFF_FFFFFFFF   : valid_bytes = 7'h34;
+              64'h1FFFFF_FFFFFFFF  : valid_bytes = 7'h35;
+              64'h3FFFFF_FFFFFFFF  : valid_bytes = 7'h36;
+              64'h7FFFFF_FFFFFFFF  : valid_bytes = 7'h37;
+              64'hFFFFFF_FFFFFFFF  : valid_bytes = 7'h38;
+              64'h1FFFFFF_FFFFFFFF : valid_bytes = 7'h39;
+              64'h3FFFFFF_FFFFFFFF : valid_bytes = 7'h3a;
+              64'h7FFFFFF_FFFFFFFF : valid_bytes = 7'h3b;
+              64'hFFFFFFF_FFFFFFFF : valid_bytes = 7'h3c;
+              64'h1FFFFFFF_FFFFFFFF: valid_bytes = 7'h3d;
+              64'h3FFFFFFF_FFFFFFFF: valid_bytes = 7'h3e;
+              64'h7FFFFFFF_FFFFFFFF: valid_bytes = 7'h3f;
+              64'hFFFFFFFF_FFFFFFFF: valid_bytes = 7'h40;
+              default:  valid_bytes = 7'h40;
           endcase
 end
 
@@ -357,7 +358,7 @@ end
 // Count length of padded message
 always @(*) begin
     if(s_axis_tlast)begin
-        new_length_low = length_low + (({58'b0,last_valid_byte} + 1) << 3);
+        new_length_low = length_low + ({57'b0,valid_bytes} << 3);
     end
     else begin  // Write tdata to R_reg and raise the flag for a new register
         new_length_low = length_low + DATA_BLOCK_REG_WIDTH;
@@ -379,7 +380,8 @@ endtask : update_length
 
 //Padding step
 always @(*) begin
-    pad = 512'h80 << (8 * next_byte);
+    next_bit = ( {{3{1'b0}},next_byte} << 3 );
+    pad = 512'h80 << next_bit;
     if(complete) begin // If the length fits, then pad with 0s all but the length bytes and assert tlast
         // If the length doesn't fit in the padding, just pad with 0s the rest and go to next block
         // Length is written in big-endian format
@@ -391,7 +393,7 @@ always @(*) begin
         end
 
     end
-    pad = (R_reg & ((1<<(8 * next_byte)) - 1)) | pad;
+    pad = (R_reg & ((1<<next_bit) - 1)) | pad;
 end
 
 // Extra padding
@@ -436,9 +438,9 @@ always @(posedge axis_aclk) begin
                         if(s_axis_tlast)begin
                             // Write tdata to R_reg
                             R_reg <= s_axis_tdata;
-                            next_byte <= last_valid_byte + 1;
+                            next_byte <= valid_bytes[NUM_BYTES_WIDTH-1:0];
                             update_length();
-                            if(last_valid_byte + 1 == 64) begin    // If there weren't any null bytes in the last frame
+                            if(valid_bytes == 64) begin    // If there weren't any null bytes in the last frame
                                 reg_status <= reg_status_actual | 2'b01;
                                 reg_count <= ~reg_count;
                             end else begin
