@@ -1,4 +1,3 @@
-`timescale 1ns / 10ps
 //////////////////////////////////////////////////////////////////////////////////
 // Company: University of Oxford
 // Engineer: Cristian Bourceanu
@@ -127,6 +126,8 @@ localparam LEN_FIELD_WIDTH = 8 * LEN_FIELD_BYTES;
 reg [DATA_BLOCK_REG_WIDTH-1:0] R_reg;
 reg [DATA_BLOCK_REG_WIDTH-1:0] L_reg;
 reg [DATA_BLOCK_REG_WIDTH-1:0] pad;
+reg [DATA_BLOCK_REG_WIDTH-1:0] pad_init;
+reg [DATA_BLOCK_REG_WIDTH-1:0] reg_mask;
 reg [DATA_BLOCK_REG_WIDTH-1:0] extra_pad;
 reg [1:0] reg_status;
 wire [1:0] reg_status_actual;
@@ -135,7 +136,6 @@ reg [NUM_BYTES_WIDTH-1:0] shift_inc;
 reg [NUM_BYTES_WIDTH-1:0] shift_measure;
 reg [NUM_BYTES_WIDTH:0] valid_bytes;
 reg [NUM_BYTES_WIDTH-1:0] next_byte;
-reg [NUM_BYTES_WIDTH+2:0] next_bit;
 
 reg [63:0] length_low;
 reg [63:0] length_high;   // Theoretically used only for SHA384/512, practically never
@@ -283,6 +283,7 @@ always @(*) begin
           endcase
 end
 
+
 // ---------- FSM --------------
 
 // FSM transitions
@@ -355,6 +356,8 @@ end
 ******** Feed Data In Logic *******
 */
 
+
+
 // Count length of padded message
 always @(*) begin
     if(s_axis_tlast)begin
@@ -378,31 +381,92 @@ task update_length;
     end
 endtask : update_length
 
-//Padding step
 always @(*) begin
-    next_bit = ( {{3{1'b0}},next_byte} << 3 );
-    pad = 512'h80 << next_bit;
+    case(next_byte)
+        0:  begin reg_mask = {{64{8'h0}}, {0{8'hff}}};     pad_init = {{63{8'h0}}, 8'h80,  {0{8'h0}}}; end
+        1:  begin reg_mask = {{63{8'h0}}, {1{8'hff}}};     pad_init = {{62{8'h0}}, 8'h80,  {1{8'h0}}}; end
+        2:  begin reg_mask = {{62{8'h0}}, {2{8'hff}}};     pad_init = {{61{8'h0}}, 8'h80,  {2{8'h0}}}; end
+        3:  begin reg_mask = {{61{8'h0}}, {3{8'hff}}};     pad_init = {{60{8'h0}}, 8'h80,  {3{8'h0}}}; end
+        4:  begin reg_mask = {{60{8'h0}}, {4{8'hff}}};     pad_init = {{59{8'h0}}, 8'h80,  {4{8'h0}}}; end
+        5:  begin reg_mask = {{59{8'h0}}, {5{8'hff}}};     pad_init = {{58{8'h0}}, 8'h80,  {5{8'h0}}}; end
+        6:  begin reg_mask = {{58{8'h0}}, {6{8'hff}}};     pad_init = {{57{8'h0}}, 8'h80,  {6{8'h0}}}; end
+        7:  begin reg_mask = {{57{8'h0}}, {7{8'hff}}};     pad_init = {{56{8'h0}}, 8'h80,  {7{8'h0}}}; end
+        8:  begin reg_mask = {{56{8'h0}}, {8{8'hff}}};     pad_init = {{55{8'h0}}, 8'h80,  {8{8'h0}}}; end
+        9:  begin reg_mask = {{55{8'h0}}, {9{8'hff}}};     pad_init = {{54{8'h0}}, 8'h80,  {9{8'h0}}}; end
+        10: begin reg_mask = {{54{8'h0}}, {10{8'hff}}};    pad_init = {{53{8'h0}}, 8'h80,  {10{8'h0}}}; end
+        11: begin reg_mask = {{53{8'h0}}, {11{8'hff}}};    pad_init = {{52{8'h0}}, 8'h80,  {11{8'h0}}}; end
+        12: begin reg_mask = {{52{8'h0}}, {12{8'hff}}};    pad_init = {{51{8'h0}}, 8'h80,  {12{8'h0}}}; end
+        13: begin reg_mask = {{51{8'h0}}, {13{8'hff}}};    pad_init = {{50{8'h0}}, 8'h80,  {13{8'h0}}}; end
+        14: begin reg_mask = {{50{8'h0}}, {14{8'hff}}};    pad_init = {{49{8'h0}}, 8'h80,  {14{8'h0}}}; end
+        15: begin reg_mask = {{49{8'h0}}, {15{8'hff}}};    pad_init = {{48{8'h0}}, 8'h80,  {15{8'h0}}}; end
+        16: begin reg_mask = {{48{8'h0}}, {16{8'hff}}};    pad_init = {{47{8'h0}}, 8'h80,  {16{8'h0}}}; end
+        17: begin reg_mask = {{47{8'h0}}, {17{8'hff}}};    pad_init = {{46{8'h0}}, 8'h80,  {17{8'h0}}}; end
+        18: begin reg_mask = {{46{8'h0}}, {18{8'hff}}};    pad_init = {{45{8'h0}}, 8'h80,  {18{8'h0}}}; end
+        19: begin reg_mask = {{45{8'h0}}, {19{8'hff}}};    pad_init = {{44{8'h0}}, 8'h80,  {19{8'h0}}}; end
+        20: begin reg_mask = {{44{8'h0}}, {20{8'hff}}};    pad_init = {{43{8'h0}}, 8'h80,  {20{8'h0}}}; end
+        21: begin reg_mask = {{43{8'h0}}, {21{8'hff}}};    pad_init = {{42{8'h0}}, 8'h80,  {21{8'h0}}}; end
+        22: begin reg_mask = {{42{8'h0}}, {22{8'hff}}};    pad_init = {{41{8'h0}}, 8'h80,  {22{8'h0}}}; end
+        23: begin reg_mask = {{41{8'h0}}, {23{8'hff}}};    pad_init = {{40{8'h0}}, 8'h80,  {23{8'h0}}}; end
+        24: begin reg_mask = {{40{8'h0}}, {24{8'hff}}};    pad_init = {{39{8'h0}}, 8'h80,  {24{8'h0}}}; end
+        25: begin reg_mask = {{39{8'h0}}, {25{8'hff}}};    pad_init = {{38{8'h0}}, 8'h80,  {25{8'h0}}}; end
+        26: begin reg_mask = {{38{8'h0}}, {26{8'hff}}};    pad_init = {{37{8'h0}}, 8'h80,  {26{8'h0}}}; end
+        27: begin reg_mask = {{37{8'h0}}, {27{8'hff}}};    pad_init = {{36{8'h0}}, 8'h80,  {27{8'h0}}}; end
+        28: begin reg_mask = {{36{8'h0}}, {28{8'hff}}};    pad_init = {{35{8'h0}}, 8'h80,  {28{8'h0}}}; end
+        29: begin reg_mask = {{35{8'h0}}, {29{8'hff}}};    pad_init = {{34{8'h0}}, 8'h80,  {29{8'h0}}}; end
+        30: begin reg_mask = {{34{8'h0}}, {30{8'hff}}};    pad_init = {{33{8'h0}}, 8'h80,  {30{8'h0}}}; end
+        31: begin reg_mask = {{33{8'h0}}, {31{8'hff}}};    pad_init = {{32{8'h0}}, 8'h80,  {31{8'h0}}}; end
+        32: begin reg_mask = {{32{8'h0}}, {32{8'hff}}};    pad_init = {{31{8'h0}}, 8'h80,  {32{8'h0}}}; end
+        33: begin reg_mask = {{31{8'h0}}, {33{8'hff}}};    pad_init = {{30{8'h0}}, 8'h80,  {33{8'h0}}}; end
+        34: begin reg_mask = {{30{8'h0}}, {34{8'hff}}};    pad_init = {{29{8'h0}}, 8'h80,  {34{8'h0}}}; end
+        35: begin reg_mask = {{29{8'h0}}, {35{8'hff}}};    pad_init = {{28{8'h0}}, 8'h80,  {35{8'h0}}}; end
+        36: begin reg_mask = {{28{8'h0}}, {36{8'hff}}};    pad_init = {{27{8'h0}}, 8'h80,  {36{8'h0}}}; end
+        37: begin reg_mask = {{27{8'h0}}, {37{8'hff}}};    pad_init = {{26{8'h0}}, 8'h80,  {37{8'h0}}}; end
+        38: begin reg_mask = {{26{8'h0}}, {38{8'hff}}};    pad_init = {{25{8'h0}}, 8'h80,  {38{8'h0}}}; end
+        39: begin reg_mask = {{25{8'h0}}, {39{8'hff}}};    pad_init = {{24{8'h0}}, 8'h80,  {39{8'h0}}}; end
+        40: begin reg_mask = {{24{8'h0}}, {40{8'hff}}};    pad_init = {{23{8'h0}}, 8'h80,  {40{8'h0}}}; end
+        41: begin reg_mask = {{23{8'h0}}, {41{8'hff}}};    pad_init = {{22{8'h0}}, 8'h80,  {41{8'h0}}}; end
+        42: begin reg_mask = {{22{8'h0}}, {42{8'hff}}};    pad_init = {{21{8'h0}}, 8'h80,  {42{8'h0}}}; end
+        43: begin reg_mask = {{21{8'h0}}, {43{8'hff}}};    pad_init = {{20{8'h0}}, 8'h80,  {43{8'h0}}}; end
+        44: begin reg_mask = {{20{8'h0}}, {44{8'hff}}};    pad_init = {{19{8'h0}}, 8'h80,  {44{8'h0}}}; end
+        45: begin reg_mask = {{19{8'h0}}, {45{8'hff}}};    pad_init = {{18{8'h0}}, 8'h80,  {45{8'h0}}}; end
+        46: begin reg_mask = {{18{8'h0}}, {46{8'hff}}};    pad_init = {{17{8'h0}}, 8'h80,  {46{8'h0}}}; end
+        47: begin reg_mask = {{17{8'h0}}, {47{8'hff}}};    pad_init = {{16{8'h0}}, 8'h80,  {47{8'h0}}}; end
+        48: begin reg_mask = {{16{8'h0}}, {48{8'hff}}};    pad_init = {{15{8'h0}}, 8'h80,  {48{8'h0}}}; end
+        49: begin reg_mask = {{15{8'h0}}, {49{8'hff}}};    pad_init = {{14{8'h0}}, 8'h80,  {49{8'h0}}}; end
+        50: begin reg_mask = {{14{8'h0}}, {50{8'hff}}};    pad_init = {{13{8'h0}}, 8'h80,  {50{8'h0}}}; end
+        51: begin reg_mask = {{13{8'h0}}, {51{8'hff}}};    pad_init = {{12{8'h0}}, 8'h80,  {51{8'h0}}}; end
+        52: begin reg_mask = {{12{8'h0}}, {52{8'hff}}};    pad_init = {{11{8'h0}}, 8'h80,  {52{8'h0}}}; end
+        53: begin reg_mask = {{11{8'h0}}, {53{8'hff}}};    pad_init = {{10{8'h0}}, 8'h80,  {53{8'h0}}}; end
+        54: begin reg_mask = {{10{8'h0}}, {54{8'hff}}};    pad_init = {{9{8'h0}},  8'h80,  {54{8'h0}}}; end
+        55: begin reg_mask = {{9{8'h0}},  {55{8'hff}}};    pad_init = {{8{8'h0}},  8'h80,  {55{8'h0}}}; end
+        56: begin reg_mask = {{8{8'h0}},  {56{8'hff}}};    pad_init = {{7{8'h0}},  8'h80,  {56{8'h0}}}; end
+        57: begin reg_mask = {{7{8'h0}},  {57{8'hff}}};    pad_init = {{6{8'h0}},  8'h80,  {57{8'h0}}}; end
+        58: begin reg_mask = {{6{8'h0}},  {58{8'hff}}};    pad_init = {{5{8'h0}},  8'h80,  {58{8'h0}}}; end
+        59: begin reg_mask = {{5{8'h0}},  {59{8'hff}}};    pad_init = {{4{8'h0}},  8'h80,  {59{8'h0}}}; end
+        60: begin reg_mask = {{4{8'h0}},  {60{8'hff}}};    pad_init = {{3{8'h0}},  8'h80,  {60{8'h0}}}; end
+        61: begin reg_mask = {{3{8'h0}},  {61{8'hff}}};    pad_init = {{2{8'h0}},  8'h80,  {61{8'h0}}}; end
+        62: begin reg_mask = {{2{8'h0}},  {62{8'hff}}};    pad_init = {{1{8'h0}},  8'h80,  {62{8'h0}}}; end
+        63: begin reg_mask = {{1{8'h0}},  {63{8'hff}}};    pad_init = {{0{8'h0}},  8'h80,  {63{8'h0}}}; end
+    endcase
     if(complete) begin // If the length fits, then pad with 0s all but the length bytes and assert tlast
         // If the length doesn't fit in the padding, just pad with 0s the rest and go to next block
         // Length is written in big-endian format
         if(sha_type[1]) begin
-            pad = pad | {{384{1'b0}},big_endian(length_low),big_endian(length_high)} 
-                            << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * 2);
+            pad = (R_reg & reg_mask) | pad_init | {big_endian(length_low),big_endian(length_high),{384{1'b0}}};
         end else begin
-            pad = pad | {{448{1'b0}},big_endian(length_low)} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
+            pad = (R_reg & reg_mask) | pad_init | {big_endian(length_low),{448{1'b0}}};
         end
-
     end
-    pad = (R_reg & ((1<<next_bit) - 1)) | pad;
+    else
+        pad = (R_reg & reg_mask) | pad_init;
 end
 
 // Extra padding
 always @(*) begin
     if(sha_type[1]) begin
-        extra_pad = {{384{1'b0}},big_endian(length_low),big_endian(length_high)}  
-                        << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH * 2);
+        extra_pad = {big_endian(length_low),big_endian(length_high),{384{1'b0}}};
     end else begin
-        extra_pad = {{448{1'b0}},big_endian(length_low)} << (DATA_BLOCK_REG_WIDTH - LEN_FIELD_WIDTH);
+        extra_pad = {big_endian(length_low),{448{1'b0}}};
     end
 end
 
@@ -471,7 +535,7 @@ always @(posedge axis_aclk) begin
             EXTRA_PAD: begin
                 if(~reg_status_actual[0]) begin
                     if(~reg_count & sha_type[1]) begin // In the case of SHA384/512 verify that an even number of 512b blocks has been created
-                        R_reg[DATA_BLOCK_REG_WIDTH-1:0] <= 0;
+                        R_reg <= 0;
                         reg_count <= ~reg_count;
                     end else begin // Then pad with 0's and append the length value
                         // Length is written in big-endian format
